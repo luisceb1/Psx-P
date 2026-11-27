@@ -1,0 +1,125 @@
+# PCSX4ALL feasibility — 2026-11-27
+
+This is a separate investigation based on main 04796217abf41224492ebb26d346c038602d7add. The old CPU and PRs 10/11 are untouched. No runnable emulator is produced, no third-party source is committed, no game/BIOS/saves or binary artifacts.
+
+## Evidence and provenance
+
+Upstream https://github.com/dmitrysmagin/pcsx4all/tree/c7faf12b893eba94faced88baa5e7dd059be58b7 (2019-02-19), PCSX4ALL 2.4. Root gpl.txt, GPL-2.0-or-later notices in r3000a.cpp, psxevents.cpp, psxcounters.cpp; MIT-style notice in recompiler.cpp and mem_mapping.cpp; GPL-2.0-or-later in host_asm.S; mips_codegen.cpp includes explicitly GPLv2-derived functions. Per-file audit of GPU/SPU/assets/ports still required. Preserve attribution and original history for any eventual vendoring; no release clearance.
+
+- psxcommon.h defines PSXCLK 33868800, psxinterpreter.cpp advances cycles per instruction, psxevents.cpp schedules events and rebases timestamps; psxcounters.cpp derives VBlank and root counters from cycle deadlines. This is a more coherent starting point, not verified cycle accuracy. Do not mix with the old branch-count cycle model.
+- recompiler.cpp supports register allocation, constants, code invalidation, block returns and non-virtual pointer LUT; mem_mapping.cpp contains existing non-mmap stubs. PSP can initially use these, not Linux SHMEM/TMPFS or mapping at address zero.
+- Host cache maintenance uses Linux cacheflush or MIPS32r2 synci/rdhwr; PSP adaptation uses sceKernelDcacheWritebackInvalidateRange then sceKernelIcacheInvalidateRange.
+- Original code arena 12 MiB plus 2.5 MiB block-pointer arrays and 256 KiB LUT for 32-bit pointers; probe reduces arena to 4 MiB, preserves 512 KiB reserve. No proof of runtime fit or safe emission yet.
+- Probe intentionally disables inline assembly dispatcher, direct-return jumps, fastpath jumps and direct memory access initially. Do not benchmark this conservative configuration as a finished port. Audit remaining generated opcodes, ABI, address region reachability, load delay, exception semantics, SMC and DMA invalidation before executing generated code.
+- GPU Unai + GPULib and ReARMed SPU are upstream components. GU probe is only a textured presentation API compilation check; exact PS1 rasterization requires tests for mask bits, texture windows, dithering, semi-transparency, ordering, VRAM readback, format and synchronization. A host GPU is not automatically a correct PS1 GPU.
+
+## Gates
+
+1. Compile isolated CPU, scheduler, memory, GTE and MIPS recompiler units with PSPSDK. Record exact source SHA and SDK image digest. Inspect individual failures. No linking, runtime or speed claim.
+2. Build independent synthetic test executable with no BIOS/game. Validate guest ALU, branch/load delay, RAM mirrors, event delivery and cache/ABI; compare interpreter and recompiler with the same core.
+3. Link a minimal PSP platform port; measure memory, use isolated blank storage and retain fallback interpreter. Only then consider physical testing.
+4. Add disc and frontend adapters, GPU and SPU. Benchmark fixed workloads with guest frame/event counts and elapsed wall time. Compare against original fastcore separately.
+5. Consider GU rasterization or VFPU only after identifying bottleneck. Do not change original BIAS/VSync or merge experimental code prematurely.
+
+## First cross-compile result — 2026-11-27
+
+CI 45988677116: GCC 15.2.0 compiled 8/9 core translation units: r3000a, psxinterpreter, psxevents, psxcounters, psxmem, gte, mips_codegen and mem_mapping. The full recompiler and GU probe failed because standalone compiler calls lacked the SDK include directory (pspkernel.h / pspgu.h not found). This is a build configuration failure, not evidence that the full backend is compatible. Add explicit SDK include path from psp-config and header existence checks. On successful compilation, combine the objects using a relocatable link and report unresolved external symbols to scope the next platform/core integration. Relocatable output is not an executable and is not uploaded. No hardware test.
+
+## Second cross-compile result — 2026-11-27
+
+CI 45988854776: same eight core objects compile; GU probe now compiles (168 bytes text). Full recompiler failed at rec_mdu.cpp.h:354/360 due to abs(u32) overload ambiguity in signed constant DIV. Inspection also found unsigned division/remainder in the signed constant path and sign-dependent shortcuts that need semantic tests. Disable constant multiply/divide shortcuts and the exception-sequence-based omission of division-by-zero fixup for the first candidate; do not treat this as fixing runtime MDU semantics. Runtime DIV overflow and zero behavior on Allegrex still need verification. The upstream C dispatcher itself uses inline asm recFunc with incomplete caller-clobber declaration and manual stack manipulation; a dedicated ABI-audited assembly trampoline or equivalent is a runtime gate even if compilation succeeds. No physical test or performance claim. GU result is compile-only.
+
+## Third cross-compile result — 2026-11-27
+
+CI 45989046932 compiled all nine core translation units including full recompiler and GU. Job failed after compilation because a malformed quoted grep expression broke the post-compile shell script. Fix script and add original external ABI bridge (call_block.S) to replace inline C asm. Bridge preserves s0-s7, fp, gp, ra, maintains 8-byte stack alignment, provides 16-byte outgoing argument area and return slot at 16(sp), passes guest context in fp and PC in v0, returns next PC and cycle delta through result[2]. This is a compile/link-only candidate, not runtime validated. Remaining ABI assumptions: generated calls to C, stack use inside emitted blocks, same J/JAL 256 MiB segment, instruction encodings (especially MIPS32 SPECIAL2 MUL/CLZ and MOVN/MOVZ), and cache coherency require audit and synthetic execution before hardware use. No speed claim. GU remains compile-only.
+
+## Independent ABI and ISA gate
+
+Add a standalone PSP EBOOT build for synthetic host blocks only: indirect RA return, stack return slot and rewriting code at the same address after cache synchronization. It checks returned PC/cycles and guest-context sentinels. This is not a guest CPU test and cannot prove callee-saved preservation exhaustively or calls from generated code into C. No EBOOT uploaded. A separate assembler probe compares ten relevant host instructions and NOP with upstream emitter words; differences are recorded as porting work, not silently accepted as valid opcodes. Three-operand MUL and optional MIPS32r2 instructions are not covered by this first corpus. Never execute upstream-generated code until ISA mismatches are addressed and a bounded guest test exists.
+
+## First complete compile/link and ISA results
+
+CI 45989391917 passed both jobs: nine core units, bridge, relocatable link (4,676,647 bytes aggregate text/data/bss), ABI EBOOT packaging and GU compile. ISA comparison: 10/11 words match; CLZ upstream 71284020 differs from Allegrex 01204016. Adapt the CLZ encoder to SPECIAL fn 0x16, disable MIPS32 SPECIAL2 MUL and unverified r2 options, make the first ISA corpus a strict gate. Add a minimal guest EBOOT candidate with real interpreter and dynarec, original five-instruction ALU + jump/delay-slot program, bounded interpreter dispatch and a single test-specific dynarec dispatch. Peripheral stubs fail closed; no BIOS boot, actual event queue, RAM-op semantics or full compatibility proven. The one-block emitter itself is not a general bounded executor and must only be invoked on this trusted program. Do not execute physically until the full link and further ABI/ISA review pass. No binary upload.
+
+CI 45989621794: corrected ISA corpus 11/11, ABI EBOOT packaging passed, all nine core modules and relocatable link passed. Guest harness compile failed on missing psxevents.h (PSXINT_NEXT_EVENT). Add header and second trusted single-block test for SW/LW and explicit load-delay NOP; verify RAM word and GPR/PC against literal expected values as well as interpreter. Still no execution or performance evidence; memory calls from generated code remain a runtime gate.
+
+CI 45989980801: both jobs passed; first synthetic guest EBOOT fully linked (SHA256 6071a5e2c4edc057962050e156ab7fe94a519e7244e320163be9dab697a1a09a). Extend trusted PC allowlist for a 20,000-iteration loop; bounded dispatch, compare expected registers and PC, record cold-start wall times (includes initial compilation) and guest cycles. Add code rewrite via psxMemWrite32 at block entry, not proof of arbitrary SMC. Log to local PCSX4ALL_PROBE.TXT, flush per test, request 333/166 and record actual clocks. No game/BIOS, no uploaded binaries. This is not a game performance benchmark; peripherals and event dispatch remain outside the test.
+
+## First physical PSP Go validation — 2026-11-27
+
+User-reported local EBOOT SHA256 matches CI 45990141530: 5eeabdfbb9036dbd3eec9ab350821cde79880a35030bd2c43873b21415e84a31. Probe v2 reports CPU 333 MHz, bus 166 MHz. Original user log:
+
+```text
+PCSX4ALL guest probe v2 cpu=333 bus=166
+ALU + branch,PASS,PASS,PASS,10,10
+RAM store/load,PASS,PASS,PASS,14,14
+loop,PASS,69567,23661,160006,160006,20000
+rewrite,PASS
+```
+
+Interpreter 69,567 us; dynarec 23,661 us including cold compilation; speedup 2.9402x; wall-time reduction 65.99%. Both engines report identical cycles in these workloads. Explicit block-entry rewrite passed. This is one physical run on synthetic code, not a game/FPS benchmark; independent ABI executable not physically tested. Actual event queue, broader load delays, MMIO, exceptions, arbitrary SMC, GPU/SPU/CD and game compatibility remain unvalidated. No direct comparison with legacy fastcore. Next priority: minimal platform integration of real peripheral modules, retain interpreter fallback and bounded synthetic regression; no arbitrary timing changes or public binary release.
+
+## GPU integration — first headless candidate
+
+After successful physical CPU validation, compile pinned upstream GPU Unai (gpulib_if.cpp, GPL-2.0-or-later notices) and GPULib (gpu.cpp, GPL-2.0-or-later or LGPL-2.1-or-later) without the original SDL presentation frontend. Use upstream software rasterizer and real GP0/GP1 commands, allocate upstream guarded VRAM (about 2 MiB), keep frameskip disabled. Independent GPU EBOOT tests fill, CPU upload, CPU readback, VRAM copy, flat rectangle, and headless presentation callback; verify literal 15-bit pixel values. No CPU MMIO integration yet, no GU rendering, no actual display presentation, no BIOS or disc, no public binary. Preserve CPU physical baseline and its separate EBOOT. Later integrate actual psxHw and DMA with real GPU, then PSP display adapter and measure presentation cost. Per-file license audit still required before distribution.
+
+CI 45991525768: ABI/ISA passed; GPU renderer compilation failed because -Dgpu_unai collides with the renderer state variable of the same name, and unsigned int* command list differs from uint32_t* on PSP newlib. Remove lowercase selector for GPU probe (keep GPU_UNAI), normalize command list pointers to the declared GPULib uint32_t interface. No permissive conversion flags. GPU runtime remains untested.
+
+CI 45991752314: both jobs passed; GPU EBOOT SHA256 6e0c77fe7911c36cc11d804d309a6f400ddb1e2b33af61613f1a79435706148b; guest CPU EBOOT SHA unchanged from physical v2. Add native GU double-buffered presentation from software VRAM, 15-bit noninterlaced windows <=512x256 only; unsupported modes counted, not implemented. Texture staging preserves RGB bit order in GU_PSM_5551 and forces opaque alpha without modifying PS1 VRAM. Aspect-preserving nearest scaling; time includes staging/cache/GU completion but excludes VBlank wait. Color bars literal VRAM test plus submission counter; visual confirmation required (counter does not prove display correctness). No CPU MMIO/DMA or GPU raster acceleration yet. No public binary.
+
+CI 45991931628 passed GPU+GU compile and legacy baseline; CPU EBOOT hash unchanged, GU GPU EBOOT SHA256 8fee263681fb392736945685a865d7c061d92e9dd33a127df0ad0015c228a508. Add third isolated executable linking real CPU and GPU with restricted 32-bit GP0/GP1 MMIO adapter (not upstream full psxHw). Guest program writes three GP0 words via SW to fill a 256x240 red region; check VRAM corners/guard pixels, GPR/cycles, and GU submission for both engines. All other peripheral accesses still fail closed. No DMA register emulation or event scheduling yet; no physical validation, no binaries published. Preserve independent probes.
+
+CI 45992869047: independent CPU/GPU EBOOT hashes unchanged, ABI/ISA and legacy pass; combined compile failed solely at PSP module name length (27-byte field). Shorten internal module name, keep XMB title. Compile original psxdma.cpp and link its real GPU/DMA completion functions into combined probe; invoke DMA2 on a bounded RAM packet, initialize original event queue, check VRAM, MADR, scheduled DMA event and completion IRQ via psxBranchTest. Advance cycle explicitly to scheduled deadline only within this isolated test, not a gameplay timing change. SPU DMA remains fail-closed. No guest DMA register decoder or full psxHw yet, no physical result. Final displayed image now green strip from DMA probe; independent GPU color bars unchanged.
+
+Next integration step: replace provisional GP0/GP1-only MMIO adapter in combined build with original psxhw.cpp. DMA2 test programs DPCR/DICR/MADR/BCR/CHCR through real psxMemWrite32 register decoding instead of calling psxDma2 directly. Unimplemented MDEC, SIO, CD-ROM initialization and DMA channels 0/1/3 trap explicitly; do not call full hardware reset yet. Original hardware decoder has its own generic register behavior; this is not full peripheral validation. Separate CPU baseline unchanged. No physical test or binary release.
+
+CI 45993159347 passed combined CPU/GPU/DMA link (SHA256 7466bb23895c2a5f4228b2ad24f9dd61fd24e464eee17538924fcfd7ab2b2fc8). Start separate CD data-only probe: pinned cdriso.cpp and ppf.cpp, compile cdrom.cpp and decode_xa.cpp independently, link reader with original synthetic raw BIN/CUE generated locally, verify track count/start and two known sector bytes. Temporarily exclude POSIX CDDA thread, no audio support or claim; controller not linked into test, DMA3/boot still pending. zlib needed. No commercial content, no public binary. Compilation and physical validation pending.
+
+CI 45993279377 passed original hardware decoder integration (EBOOT SHA256 9719e314fe5c3caf217b945a5f733b9d1f625ebb3b58552e4cc1ea3b8a1007e3); 45993440981 failed at CD seek distance abs(unsigned int). Fix using signed 64-bit distance before narrowing (valid MSF ranges fit int). Preserve previous combined build, add separate CD-linked EBOOT with real cdriso, ppf, cdrom and XA decoder; Getstat command through original MMIO and event queue, record response byte. No disc in this integrated command test; independent BIN/CUE reader remains separate. DMA3 implementation linked but not transfer-tested, SPU and CheckCdrom trap, no boot yet. Pending CI and physical tests.
+
+CI 45993867815 passed all probes, CD reader EBOOT SHA256 b6322613cfcb1ba0bb2a06ba84471d55a6cd7853aa039416bbbd03b173eabb80 and CD-linked EBOOT 2fac84fb82b76041df3c7e9d13016dd419a781cfc0521e0eea83dffe0206eb16; legacy passed. Add pinned misc.cpp loader-only slice (savestate functions excluded), fix unaligned ISO extent reads, link separate EXE candidate with original Load/LoadCdrom/CheckCdrom; generate trusted synthetic PS-X EXE with 2048-byte header and payload, verify loaded RAM/PC/GP/SP and execute known GPU-writing block. Upstream Load lacks comprehensive malformed-file bounds checks; only trusted generated fixture is permitted here, no external executable input. ISO9660 boot not yet tested, HLE and BIOS still absent, DMA3 transfer not yet tested. No physical validation or public binary. Preserve previous probes.
+
+CI 45994179980 passed EXE candidate (SHA256 0e659dea6ed2bee8fc0d4bc4d74f764ff1d54000b947363ac7c13824d011aac0), all earlier EBOOT hashes unchanged. Add separate HLE candidate with original psxbios, psxhle, MDEC, SIO and PAD units; neutral pad_read and no memory card mounts; exercise real psxReset with HLE enabled, verify bootstrap and A0/B0/C0 vectors and one A0 strlen HLE call via interpreter opcode. SPU remains fail-closed, no full disc bootstrap yet. Upstream HLE contains compressed font data: provenance requires separate audit before public redistribution; no new public binary or upstream data vendoring. Compile and runtime pending.
+
+CI 45994389919 failed before HLE compilation due to unterminated conditional in shared stubs (previous replacement omitted sioWriteCtrl16 from marker). Fix guard and add neutral pad adapter and fail-closed FileExists. Add compile-only SPU C probe using pinned upstream spu/dma/freeze/out/nullsnd/registers, no thread flags or OS audio drivers; relocatable link and unresolved symbol inventory. Null backend is not audible audio and no SPU runtime integration yet. CI pending. Preserve previous candidates.
+
+CI 45994629580: all six previous EBOOT hashes unchanged, legacy and ISA pass. HLE compilation fails at psxBios_malloc host unsigned int* versus guest u32* on PSP newlib. Normalize descriptors to u32* and move dereference after original null check. SPU compilation not reached because HLE failed first. No runtime or audio claims. New CI pending.
+
+CI 45995581196: HLE/MDEC/SIO candidate successfully linked, EBOOT SHA256 9f18130eb0cb9342e88f22308711f45381dd7e17db7adbd3844634a60ac37f65; previous six hashes unchanged. SPU compile fails in SetupStreams due to uint32_t allocation casts versus unsigned int ring pointers. Preserve original ring element type and size XA allocation by dereferenced element type; no timing or mixer algorithm changes. Runtime validation pending, no audio output yet.
+
+CI 45996223350 passes six SPU C units and relocatable link; seven EBOOT hashes unchanged. nm shows POSIX worker dependencies because upstream defines THREAD_ENABLED automatically; disable that define only on PSP, preserve XA gettimeofday, gate absence of pthread/semaphore symbols. Add separate full diagnostic EBOOT with real SPU, null output backend, IRQ callback and scheduler matching upstream logic, MMIO control readback and update-return smoke test. Not an audible audio test or DMA4 transfer test. Pending CI and physical validation. No public binary.
+
+## Full-core physical smoke test — 2026-11-27
+
+User-reported PSP Go execution of candidate 9c3bfd22fcdcde504974941d58d62808d2b2b580 (CI 45996677917, full-test EBOOT reference SHA256 789f0fd6da3b3743316a58496366b62844671767172d2a2faa2ae7e613a7ba83). Local binary hash not independently confirmed for this run. User observed a red rectangle. Uploaded PCSX4ALL_INTEGRATION.TXT contains 20 PASS, zero FAIL, CD status 02:
+
+```text
+CPU init,PASS
+SPU init null backend,PASS
+GPU init,PASS
+Interpreter GP0,PASS
+Dynarec GP0,PASS
+GPR and cycles,PASS
+DMA2 RAM to VRAM,PASS
+DMA2 event queued,PASS
+DMA2 completion IRQ,PASS
+CD Getstat event queued,PASS
+CD Getstat response,PASS
+CD status,02
+PS-X EXE creation,PASS
+PS-X EXE load,PASS
+PS-X EXE execution,PASS
+HLE reset,PASS
+HLE vectors,PASS
+HLE A0 strlen,PASS
+SPU MMIO control,PASS
+SPU update returned,PASS
+GU submission,PASS
+```
+
+This validates bounded synthetic integration paths, not game compatibility, frame rate, audible sound, DMA3/DMA4 data transfer, independent BIN/CUE reader, ISO9660 bootstrap, MDEC decoding, pad input or memory card persistence. Red rectangle observation supports visible output, not precise pixel geometry or final frame identity. Next gate: synthetic disc boot and bounded continuous execution, then privately supplied game media after loader safety review. No public binary; retain interpreter and stable main.
+
+Add full diagnostic synthetic raw Mode2 BIN/CUE ISO9660 fixture with SYSTEM.CNF and PSX.EXE, real CheckCdrom and HLE bootstrap opcode, bounded native loop and guest GPU output. Fixture only; no external disc selection, no EDC/ECC validation, no DMA3 transfer validation or general continuous executor. EmuUpdate no-op only in full diagnostic to allow scheduled frame events. CI and physical validation pending.
+
+## Synthetic disc physical test — 2026-11-27
+Candidate 2a44d5b60cd3a8ca97cdee593e8609ff848dd119, CI 45997997996 passed; reference full EBOOT SHA256 f51aeefa3408810c8b8115411ed0d041e46eeedbf71f566d8c86dac40ed21a2c (local hash not independently confirmed). Physical log: 27 PASS, 1 FAIL (GU submission); all eight disc checks PASS, 20001 native blocks, CD status 02. No visual observation supplied for this run. Original HLE fake_bios_gpu_setup issues GP1 display mode 0x08000027 (640-wide, interlace), incompatible with current vout guard. This is a source-supported hypothesis, not measured runtime cause. Add actual boot-mode and rejection counters, explicit 256x240 progressive 15-bit display window at origin and require a new presentation, not cumulative counter. This is a diagnostic workaround, not a general interlaced/RGB24 presenter. No public binary. CI and physical retest pending.

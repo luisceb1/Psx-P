@@ -1,0 +1,70 @@
+name: PCSX4ALL PSP feasibility
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'revival/pcsx4all-probe/**'
+      - '.github/workflows/pcsx4all-probe.yml'
+permissions:
+  contents: read
+jobs:
+  compile-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch exact upstream and prepare disposable source
+        run: |
+          set -eux
+          git init /tmp/pcsx4all
+          git -C /tmp/pcsx4all remote add origin https://github.com/dmitrysmagin/pcsx4all.git
+          git -C /tmp/pcsx4all fetch --depth 1 origin c7faf12b893eba94faced88baa5e7dd059be58b7
+          git -C /tmp/pcsx4all checkout --detach FETCH_HEAD
+          python3 revival/pcsx4all-probe/prepare.py /tmp/pcsx4all
+          git -C /tmp/pcsx4all diff > pcsx4all-adaptation.diff
+      - name: Compile core and MIPS backend independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull pspdev/pspdev:latest
+          docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest > pcsx4all-probe.log
+          docker run --rm -v /tmp/pcsx4all:/upstream:ro -v "$PWD:/revival:ro" pspdev/pspdev:latest sh /revival/revival/pcsx4all-probe/compile.sh /upstream /tmp/probe-objects 2>&1 | tee -a pcsx4all-probe.log
+      - name: Compile native GU API probe
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/revival:ro" pspdev/pspdev:latest sh -ec 'sdk=$(psp-config --pspsdk-path); test -f "$sdk/include/pspgu.h" && psp-gcc -I"$sdk/include" -std=gnu99 -Wall -Wextra -Werror -O2 -c /revival/revival/pcsx4all-probe/gu_probe.c -o /tmp/gu.o; psp-size /tmp/gu.o' 2>&1 | tee gu-probe.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pcsx4all-probe-diagnostics
+          path: |
+            pcsx4all-probe.log
+            pcsx4all-adaptation.diff
+            gu-probe.log
+          if-no-files-found: warn
+  abi-and-isa-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Link independent synthetic ABI test and inspect instruction encodings
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull pspdev/pspdev:latest
+          docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest > abi-isa.log
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD:/logs" pspdev/pspdev:latest sh -ec 'cp -R /src/revival/pcsx4all-probe /tmp/probe; cd /tmp/probe/abi-test; make; test -s EBOOT.PBP; sha256sum EBOOT.PBP; psp-gcc -G0 -c ../isa_probe.S -o /tmp/isa.o; psp-objdump -dr /tmp/isa.o; psp-objcopy -O binary -j .text /tmp/isa.o /logs/isa-text.bin' 2>&1 | tee -a abi-isa.log
+          python3 revival/pcsx4all-probe/check_isa.py isa-text.bin | tee -a abi-isa.log
+          rm -f isa-text.bin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: abi-isa-diagnostics
+          path: abi-isa.log
+          if-no-files-found: warn
