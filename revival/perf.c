@@ -5,10 +5,13 @@
 #include <string.h>
 #include <stdint.h>
 #include "perf.h"
+#include "boottrace.h"
 
 int revival_perf_mode = REVIVAL_PERF_LEGACY;
 int revival_perf_native;
 int revival_perf_direct;
+int revival_cd_ack_fix;
+struct revival_cd_trace revival_cd_trace;
 static uint64_t stages[4];
 static unsigned int native_hits;
 static unsigned int present_requests, present_skipped, draw_phase;
@@ -28,11 +31,16 @@ void revival_perf_init(void) {
     if (fscanf(f, "%23s", mode) == 1) {
         if (!strcmp(mode, "single")) revival_perf_mode = REVIVAL_PERF_SINGLE;
         else if (!strcmp(mode, "uncapped")) revival_perf_mode = REVIVAL_PERF_UNCAPPED;
-        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling")) {
+        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix")) {
             revival_perf_mode = REVIVAL_PERF_SINGLE;
             revival_perf_direct = 1;
             if (!strcmp(mode, "half")) { sample_divisor = 2; selected_mode = "half"; }
             else if (!strcmp(mode, "ceiling")) { sample_divisor = 0; selected_mode = "ceiling"; }
+            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix")) {
+                sample_divisor = 2;
+                revival_cd_ack_fix = !strcmp(mode, "bootfix");
+                selected_mode = revival_cd_ack_fix ? "bootfix" : "boottrace";
+            }
         }
         else if (!strcmp(mode, "native")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_native = 1; }
     }
@@ -42,9 +50,11 @@ void revival_perf_init(void) {
 void revival_perf_begin(void) {
     FILE *f = fopen("PERF.CSV", "wb");
     if (!f) return;
-    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls\n");
+    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls");
+    revival_boot_header(f);
     fclose(f);
     samples = laces = vblanks = last_cycle = draw_phase = 0;
+    memset(&revival_cd_trace, 0, sizeof(revival_cd_trace));
     cap_us = draw_us = 0;
     memset(stages, 0, sizeof(stages));
     native_hits = 0;
@@ -85,7 +95,7 @@ void revival_perf_lace(unsigned int cycle) {
     if (now - start < 2000000ULL) return;
     f = fopen("PERF.CSV", "ab");
     if (!f) { active = 0; return; }
-    fprintf(f, "%s,%d,%d,%llu,%u,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%llu,%u,%llu,%u,%llu,%u\n",
+    fprintf(f, "%s,%d,%d,%llu,%u,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%u,%u,%u,%llu,%u,%llu,%u,%llu,%u",
             selected_mode ? selected_mode : revival_perf_direct ? "direct" : revival_perf_native ? "native" : names[revival_perf_mode], scePowerGetCpuClockFrequencyInt(),
             scePowerGetBusClockFrequencyInt(), (unsigned long long)(now - start),
             laces, vblanks, cycle - last_cycle,
@@ -96,6 +106,7 @@ void revival_perf_lace(unsigned int cycle) {
             (unsigned long long)component_us[0], component_calls[0],
             (unsigned long long)component_us[1], component_calls[1],
             (unsigned long long)component_us[2], component_calls[2]);
+    revival_boot_snapshot(f);
     fclose(f);
     last_cycle = cycle;
     laces = vblanks = 0;

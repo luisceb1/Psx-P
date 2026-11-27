@@ -22,6 +22,7 @@
 
 #include "PsxCommon.h"
 #include "perf.h"
+#include "boottrace.h"
 
 int psxInit() {
 
@@ -204,3 +205,25 @@ void psxExecuteBios() {
 		psxCpu->ExecuteBlock();
 }
 
+
+/* Snapshot only when the existing two-second CSV interval ends. No extra guest IO. */
+void revival_boot_header(FILE *f) {
+    fprintf(f, ",pc,ra,sp,opcode,epc,cp0_status,cp0_cause,i_stat,i_mask,pending,cd_cmd,cd_irq,cd_stat,cd_ctrl,cd_reg2,cd_result_ready,cd_reading,cd_commands,cd_queued,cd_delivered,cd_data_ready,cd_ack_writes,cd_ack_accepted,cd_last_cmd,cd_last_irq,cd_last_ack\n");
+}
+void revival_boot_snapshot(FILE *f) {
+    u32 op = 0;
+    void *p = (psxRegs.pc & 3) ? NULL : PSXM(psxRegs.pc);
+    if (p) memcpy(&op, p, sizeof(op));
+    fprintf(f, ",%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%08lx,%02x,%02x,%02x,%02x,%02x,%u,%lu,%u,%u,%u,%u,%u,%u,%02x,%02x,%02x\n",
+            (unsigned long)psxRegs.pc, psxRegs.GPR.n.ra, psxRegs.GPR.n.sp,
+            (unsigned long)op, psxRegs.CP0.n.EPC, psxRegs.CP0.n.Status,
+            psxRegs.CP0.n.Cause, (unsigned long)psxHu32(0x1070),
+            (unsigned long)psxHu32(0x1074), (unsigned long)psxRegs.interrupt,
+            (unsigned)cdr.Cmd, (unsigned)cdr.Irq, (unsigned)cdr.Stat,
+            (unsigned)cdr.Ctrl, (unsigned)cdr.Reg2, (unsigned)cdr.ResultReady,
+            cdr.Reading, revival_cd_trace.commands, revival_cd_trace.queued,
+            revival_cd_trace.delivered, revival_cd_trace.data_ready,
+            revival_cd_trace.ack_writes, revival_cd_trace.ack_accepted,
+            revival_cd_trace.last_cmd, revival_cd_trace.last_irq,
+            revival_cd_trace.last_ack);
+}
