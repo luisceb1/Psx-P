@@ -69,7 +69,21 @@ static void loader_test(void){
     assert(rv_load_stage(f,&s)==RV_PF_PROFILE&&!s.payload&&!s.payload_bytes);
     fclose(f);
     assert(!memcmp(guest_ram+0x10000,payload(24),2048)&&!memcmp(guest_ram+0x10800,payload(25),2048));
-    puts("transactional loader: PASS (two sectors, destination rejection, exact payload, guards, truncated read)");
+    /* A second-sector read failure must discard the staged first sector;
+       the standalone inspector must still require the entire payload. */
+    disc[25][15]=0; /* ordinary unreadable/unsupported sector mode */
+    rv_pf_result inspected=m;
+    assert(image(sizeof(disc),&inspected)==RV_PF_PROFILE&&!memcmp(&inspected,&m,sizeof(m)));
+    f=tmpfile();assert(f);assert(fwrite(disc,1,sizeof(disc),f)==sizeof(disc));rewind(f);
+    rv_load_staged empty=s;
+    assert(rv_load_stage(f,&s)==RV_PF_PROFILE&&!memcmp(&s,&empty,sizeof(s)));
+    assert(!fclose(f));
+    for(size_t i=0;i<sizeof(guest_ram);i++){
+        unsigned char expected=(i>=0x10000&&i<0x10800)?0x36:
+            (i>=0x10800&&i<0x11000)?0x79:0xa5;
+        assert(guest_ram[i]==expected);
+    }
+    puts("transactional loader: PASS (two sectors, destination rejection, exact payload, guards, truncated read, partial-stage discard)");
 }
 int main(int argc,char **argv){
     char name[128]="unchanged";

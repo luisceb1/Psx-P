@@ -20,7 +20,9 @@ static inline int rv_load_stage(FILE *f,rv_load_staged *out){
     int rc;
     if(!f||!out||out->payload)return RV_LOAD_STATE;
     memset(&s,0,sizeof(s));
-    rc=rv_pf_bin(f,&s.meta);if(rc)return rc;
+    /* Read payload sectors exactly once into the private staging buffer.
+       Metadata alone is never published as a successful load. */
+    rc=rv_pf_bin_metadata(f,&s.meta);if(rc)return rc;
     s.payload_bytes=s.meta.text_bytes;
     s.payload=(unsigned char *)malloc(s.payload_bytes);
     if(!s.payload)return RV_LOAD_NO_MEMORY;

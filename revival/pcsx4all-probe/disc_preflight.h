@@ -142,7 +142,9 @@ static inline int rv_pf_exe(const unsigned char h[2048],uint32_t bytes,rv_pf_res
     r->pc=pc;r->gp=gp;r->text_addr=addr;r->text_bytes=size;r->sp=sp?sp:0x801fff00u;
     return 1;
 }
-static inline int rv_pf_bin(FILE *f,rv_pf_result *out){
+/* Internal metadata pass. It does not establish payload readability.
+ * The public inspector and transactional loader must read every payload sector. */
+static inline int rv_pf_bin_metadata(FILE *f,rv_pf_result *out){
     unsigned char sec[2048];rv_pf_result r;rv_pf_extent root,cnf,exe;
     long bytes;uint32_t volume;int rc,found;
     if(!f||!out)return RV_PF_IO;
@@ -170,11 +172,19 @@ static inline int rv_pf_bin(FILE *f,rv_pf_result *out){
     if(found!=1)return RV_PF_BOOT;
     rc=rv_pf_sector(f,exe.lba,volume,sec);if(rc)return rc;
     if(!rv_pf_exe(sec,exe.bytes,&r))return RV_PF_EXE;
-    /* Check all declared executable payload sectors are readable Form1. */
-    for(uint32_t i=0;i<r.text_bytes/2048;i++){
-        rc=rv_pf_sector(f,exe.lba+1+i,volume,sec);if(rc)return rc;
-    }
     r.exe_lba=exe.lba;r.exe_bytes=exe.bytes;
+    *out=r;return RV_PF_OK;
+}
+static inline int rv_pf_bin(FILE *f,rv_pf_result *out){
+    rv_pf_result r;
+    unsigned char sec[2048];
+    int rc;
+    if(!out)return RV_PF_IO;
+    rc=rv_pf_bin_metadata(f,&r);if(rc)return rc;
+    /* Inspection continues to require every declared payload sector. */
+    for(uint32_t i=0;i<r.text_bytes/2048u;i++){
+        rc=rv_pf_sector(f,r.exe_lba+1+i,r.sectors,sec);if(rc)return rc;
+    }
     *out=r;return RV_PF_OK;
 }
 #endif
