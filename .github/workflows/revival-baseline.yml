@@ -1,0 +1,33 @@
+name: Legacy PSP baseline
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  portable-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C revival test
+  legacy-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record environment and compile
+        shell: bash
+        run: |
+          set -o pipefail
+          git rev-parse HEAD > baseline.log
+          docker pull pspdev/pspdev:latest >> baseline.log 2>&1
+          docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest >> baseline.log
+          docker run --rm -v "$PWD:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; psp-gcc --version; psp-config --pspsdk-path; make -f makefile; test -s EBOOT.PBP' 2>&1 | tee -a baseline.log
+      - name: Upload diagnostic log (not binary)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-build-log
+          path: baseline.log
+          if-no-files-found: warn
