@@ -10,5 +10,7 @@ test:
 	./timer_policy_test
 	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/display_stage_test.c -o display_stage_test
 	./display_stage_test
+	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/disc_preflight_test.c -o disc_preflight_test
+	./disc_preflight_test
 clean:
-	rm -f storage_test present_test timer_policy_test display_stage_test
+	rm -f storage_test present_test timer_policy_test display_stage_test disc_preflight_test

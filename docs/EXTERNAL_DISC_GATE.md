@@ -13,3 +13,9 @@ Source reviewed at PCSX4ALL c7faf12b893eba94faced88baa5e7dd059be58b7: misc.cpp L
 - Add portable positive/boundary/error tests with generated fixtures only, then a bounded interpreter-first hardware launch from lawful privately supplied media. Keep dynarec opt-in until equivalence is established.
 
 No game images, BIOS or external patches in Git/CI. No claims of external image support or release clearance.
+
+## Read-only preflight V7
+
+Portable C header revival/pcsx4all-probe/disc_preflight.h and host tests in revival/tests/disc_preflight_test.c. Initial conservative profile: exactly one quoted basename BIN in CUE, one Mode2/2352 track at index zero, raw image geometry, primary descriptor at sector 16 and terminator at 17, volume size matches file, root directory at most 64 KiB, root-only SYSTEM.CNF boot name or PSX.EXE fallback, single extent, PS-X EXE with sector-aligned payload in canonical cached guest RAM and aligned entry inside text. Reads every declared payload sector; no EDC/ECC verification, no subdirectory/multitrack/Joliet/patch support, no BSS or relocation handling. Unsupported layout is not equivalent to a corrupt image.
+
+No file is opened by the parser itself, no guest RAM or CPU register writes, result is committed only on success. On PSP the full diagnostic preflights only its own freshly generated BIN/CUE before calling the original loader. No user path is accepted and no arbitrary guest code is executed; this gate is not sufficient for broader external-media execution. Host tests cover supported generated fixture and ordinary unsupported/truncated/read-only failure cases. Physical checks pending.

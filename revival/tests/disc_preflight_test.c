@@ -1,0 +1,58 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "disc_preflight.h"
+#include <assert.h>
+static unsigned char disc[32][2352];
+static unsigned char *payload(unsigned n){return disc[n]+24;}
+static void le32(unsigned char *p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(unsigned char)(v>>(8*i));}
+static void both32(unsigned char *p,uint32_t v){le32(p,v);for(unsigned i=0;i<4;i++)p[4+i]=(unsigned char)(v>>(8*(3-i)));}
+static unsigned entry(unsigned char *p,unsigned lba,unsigned bytes,unsigned flags,const char *name,unsigned n){
+    unsigned len=33+n+!(n&1);
+    memset(p,0,len);p[0]=(unsigned char)len;both32(p+2,lba);both32(p+10,bytes);
+    p[25]=(unsigned char)flags;p[28]=1;p[31]=1;p[32]=(unsigned char)n;memcpy(p+33,name,n);
+    return len;
+}
+static void fixture(void){
+    memset(disc,0,sizeof(disc));
+    for(unsigned i=0;i<32;i++){
+        memset(disc[i]+1,255,10);disc[i][15]=2;disc[i][18]=disc[i][22]=8;
+    }
+    unsigned char *p=payload(16);p[0]=1;memcpy(p+1,"CD001",5);p[6]=1;
+    both32(p+80,32);p[129]=p[130]=8;entry(p+156,20,4096,2,"\0",1);
+    p=payload(17);p[0]=255;memcpy(p+1,"CD001",5);p[6]=1;
+    p=payload(20);unsigned off=0;off+=entry(p+off,20,4096,2,"\0",1);
+    off+=entry(p+off,20,4096,2,"\1",1);
+    off+=entry(p+off,22,32,0,"SYSTEM.CNF;1",12);
+    entry(p+off,23,4096,0,"PSX.EXE;1",9);
+    const char cnf[]="BOOT = cdrom:\\PSX.EXE;1\r\n";
+    memcpy(payload(22),cnf,sizeof(cnf));
+    p=payload(23);memcpy(p,"PS-X EXE",8);le32(p+0x10,0x80010000);
+    le32(p+0x18,0x80010000);le32(p+0x1c,2048);le32(p+0x30,0x801fff00);
+}
+static int cue(const char *s,char name[128]){
+    FILE *f=tmpfile();assert(f);assert(fwrite(s,1,strlen(s),f)==strlen(s));rewind(f);
+    int rc=rv_pf_cue(f,name);fclose(f);return rc;
+}
+static int image(size_t bytes,rv_pf_result *r){
+    FILE *f=tmpfile();assert(f);assert(fwrite(disc,1,bytes,f)==bytes);rewind(f);
+    int rc=rv_pf_bin(f,r);fclose(f);return rc;
+}
+int main(void){
+    char name[128]="unchanged";
+    assert(cue("FILE \"Fixture.bin\" BINARY\r\nTRACK 01 MODE2/2352\r\nINDEX 01 00:00:00\r\n",name)==RV_PF_OK);
+    assert(!strcmp(name,"Fixture.bin"));
+    assert(cue("FILE \"Fixture.bin\" BINARY\nTRACK 01 AUDIO\nINDEX 01 00:00:00\n",name)==RV_PF_PROFILE);
+    assert(!strcmp(name,"Fixture.bin"));
+    fixture();
+    rv_pf_result r;memset(&r,0,sizeof(r));
+    assert(image(sizeof(disc),&r)==RV_PF_OK);
+    assert(r.sectors==32&&r.exe_lba==23&&r.exe_bytes==4096&&r.pc==0x80010000&&r.text_bytes==2048
+        &&r.text_addr==0x80010000&&r.sp==0x801fff00&&!strcmp(r.boot_name,"PSX.EXE;1"));
+    rv_pf_result saved=r;
+    assert(image(sizeof(disc)-1,&r)==RV_PF_PROFILE&&!memcmp(&r,&saved,sizeof(r)));
+    fixture();payload(16)[0]=0;
+    assert(image(sizeof(disc),&r)==RV_PF_VOLUME&&!memcmp(&r,&saved,sizeof(r)));
+    fixture();memset(payload(23),0,2048);
+    assert(image(sizeof(disc),&r)==RV_PF_EXE&&!memcmp(&r,&saved,sizeof(r)));
+    puts("disc preflight: PASS (CUE, ISO9660, boot, EXE, read-only failure)");
+    return 0;
+}

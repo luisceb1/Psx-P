@@ -28,6 +28,7 @@ static void CALLBACK probe_spu_schedule(unsigned int cycles){
 #endif
 #include "plugins.h"
 #include "gpu/gpulib/gpu.h"
+#include "../disc_preflight.h"
 PSP_MODULE_INFO("PCSX4ALL integrated",0,1,0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
 extern "C" int revival_pcsx4all_probe_one(void);
@@ -530,6 +531,28 @@ extern unsigned probe_presentations;
 static void disc_boot_test(){
     fresh_disc=make_disc();
     mark("Disc fixture creation",fresh_disc);
+    if(!fresh_disc)return;
+    // Validate the exact generated files from disk. External media still
+    // cannot be selected or executed by this diagnostic.
+    char name[128]={};
+    FILE *cue=fopen("REVIVAL_BOOT.cue","rb");
+    int cue_rc=cue?rv_pf_cue(cue,name):RV_PF_IO;
+    if(cue&&fclose(cue))cue_rc=RV_PF_IO;
+    bool cue_ok=cue_rc==RV_PF_OK&&!strcmp(name,"REVIVAL_BOOT.bin");
+    mark("Disc preflight CUE",cue_ok);
+    rv_pf_result meta={};
+    FILE *bin=cue_ok?fopen("REVIVAL_BOOT.bin","rb"):NULL;
+    int image_rc=bin?rv_pf_bin(bin,&meta):RV_PF_IO;
+    if(bin&&fclose(bin))image_rc=RV_PF_IO;
+    bool image_ok=image_rc==RV_PF_OK&&meta.sectors==32&&meta.exe_lba==23
+        &&meta.pc==start&&meta.text_addr==start&&meta.text_bytes==2048
+        &&meta.sp==0x801fff00u&&!strcmp(meta.boot_name,"PSX.EXE;1");
+    mark("Disc preflight ISO and EXE",image_ok);
+    if(report){
+        fprintf(report,"Preflight status,%d,%d,sectors=%lu,boot=%s\n",cue_rc,image_rc,
+            (unsigned long)meta.sectors,meta.boot_name);fflush(report);
+    }
+    fresh_disc=cue_ok&&image_ok;
     if(!fresh_disc)return;
     SetIsoFile("REVIVAL_BOOT.bin");
     bool opened=CDR_init()==0&&CDR_open()==0;
