@@ -146,3 +146,30 @@ if s.count(old) != 1:
     raise SystemExit("Unexpected ISO extent read")
 s = s.replace(old,new,1)
 misc.write_text(s)
+
+# BIOS heap descriptors are guest 32-bit words, not host unsigned int.
+bios = root / "src/psxbios.cpp"
+s = bios.read_text()
+old = "unsigned int *chunk, *newchunk = NULL;"
+if s.count(old) != 1:
+    raise SystemExit("Unexpected BIOS heap descriptor declaration")
+s = s.replace(old, "u32 *chunk, *newchunk = NULL;", 1)
+# Avoid dereferencing the uninitialized heap before the original null check.
+old = """chunk = heap_addr;
+\tcsize = ((u32)*chunk) & 0xfffffffc;
+\tcstat = ((u32)*chunk) & 1;
+\tdsize = (a0 + 3) & 0xfffffffc;
+
+\t// exit on uninitialized heap"""
+new = """chunk = heap_addr;
+\tdsize = (a0 + 3) & 0xfffffffc;
+
+\t// exit on uninitialized heap"""
+if s.count(old) != 1:
+    raise SystemExit("Unexpected BIOS heap null check")
+s = s.replace(old,new,1)
+old = "\t// search an unused chunk that is big enough until the end of the heap"
+new = "\tcsize = ((u32)*chunk) & 0xfffffffc;\n\tcstat = ((u32)*chunk) & 1;\n\n" + old
+if s.count(old) != 1:
+    raise SystemExit("Unexpected BIOS heap search")
+bios.write_text(s.replace(old,new,1))
