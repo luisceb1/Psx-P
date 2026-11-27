@@ -33,6 +33,33 @@ static int cue(const char *s,char name[128]){
     FILE *f=tmpfile();assert(f);assert(fwrite(s,1,strlen(s),f)==strlen(s));rewind(f);
     int rc=rv_pf_cue(f,name);fclose(f);return rc;
 }
+static void cue_variants(void){
+    const struct {const char *text,*name;} cases[]={
+        {"file\t\"Fixture (Europe).BIN\"\t binary\r\n  track\t01  mode2/2352\r\n\tindex  01\t00:00:00\r\n","Fixture (Europe).BIN"},
+        {"\xef\xbb\xbf" "REM Generated test fixture\nFILE \"Fixture [Rev 1].bin\" BINARY\n\nTRACK 01 MODE2/2352\nREM data track\nINDEX 01 00:00:00","Fixture [Rev 1].bin"},
+        {"FILE \"Test's Demo, Vol 1 + 2!.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n","Test's Demo, Vol 1 + 2!.bin"},
+        {"FILE \"Demo & Test.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n","Demo & Test.bin"}
+    };
+    char name[128]="unchanged";
+    for(size_t i=0;i<sizeof(cases)/sizeof(cases[0]);i++){
+        assert(cue(cases[i].text,name)==RV_PF_OK);
+        assert(!strcmp(name,cases[i].name));
+    }
+    const char *unsupported[]={
+        "FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:02:00\n",
+        "FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\nTRACK 02 AUDIO\nINDEX 01 04:00:00\n",
+        "FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE1/2352\nINDEX 01 00:00:00\n",
+        "FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nPREGAP 00:02:00\nINDEX 01 00:00:00\n",
+        "FILE \"Fixture.bin\" WAVE\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n",
+        "FILE \"Subdir/Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n"
+    };
+    strcpy(name,"unchanged");
+    for(size_t i=0;i<sizeof(unsupported)/sizeof(unsupported[0]);i++){
+        assert(cue(unsupported[i],name)==RV_PF_PROFILE);
+        assert(!strcmp(name,"unchanged"));
+    }
+    puts("CUE variants: PASS (four formatting/name variants, six unsupported profiles)");
+}
 static int image(size_t bytes,rv_pf_result *r){
     FILE *f=tmpfile();assert(f);assert(fwrite(disc,1,bytes,f)==bytes);rewind(f);
     int rc=rv_pf_bin(f,r);fclose(f);return rc;
@@ -86,6 +113,7 @@ static void loader_test(void){
     puts("transactional loader: PASS (two sectors, destination rejection, exact payload, guards, truncated read, partial-stage discard)");
 }
 int main(int argc,char **argv){
+    cue_variants();
     char name[128]="unchanged";
     assert(cue("FILE \"Fixture.bin\" BINARY\r\nTRACK 01 MODE2/2352\r\nINDEX 01 00:00:00\r\n",name)==RV_PF_OK);
     assert(!strcmp(name,"Fixture.bin"));
@@ -109,7 +137,7 @@ int main(int argc,char **argv){
         assert(result.phase==RV_INSPECT_CUE_OPEN&&!rv_inspect_ok(&result));
         assert(rv_inspect_path(path,sizeof(path),argv[1],"GAME.CUE"));
         FILE *f=fopen(path,"wb");assert(f);
-        const char text[]="FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n";
+        const char text[]="\xef\xbb\xbf" "REM Fixture\nFILE\t\"Fixture.bin\"\tBINARY\nTRACK  01\tMODE2/2352\nINDEX\t01  00:00:00\n";
         assert(fwrite(text,1,sizeof(text)-1,f)==sizeof(text)-1);assert(!fclose(f));
         result=rv_inspect_dir(argv[1]);
         assert(result.phase==RV_INSPECT_BIN_OPEN&&!rv_inspect_ok(&result));

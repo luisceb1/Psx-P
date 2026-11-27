@@ -20,12 +20,26 @@ static inline int rv_pf_eq(const char *a,size_t n,const char *b){
     return i==n&&b[i]==0;
 }
 static inline int rv_pf_space(unsigned c){return c==' '||c=='\t'||c=='\r';}
+/* Match exactly three whitespace-delimited CUE tokens. */
+static inline int rv_pf_cue_words(const char *buf,size_t a,size_t b,
+    const char *first,const char *second,const char *third){
+    const char *expected[3]={first,second,third};
+    for(unsigned i=0;i<3;i++){
+        size_t end=a;
+        while(end<b&&!rv_pf_space((unsigned char)buf[end]))end++;
+        if(!rv_pf_eq(buf+a,end-a,expected[i]))return 0;
+        a=end;while(a<b&&rv_pf_space((unsigned char)buf[a]))a++;
+    }
+    return a==b;
+}
 static inline int rv_pf_cue(FILE *f,char name[128]){
     char buf[1025],temp[128];size_t n,pos=0;unsigned stage=0;
     if(!f||!name)return RV_PF_IO;
     n=fread(buf,1,sizeof(buf),f);
     if(ferror(f))return RV_PF_IO;
     if(n==sizeof(buf)||memchr(buf,0,n))return RV_PF_PROFILE;
+    if(n>=3&&(unsigned char)buf[0]==0xef&&(unsigned char)buf[1]==0xbb&&
+        (unsigned char)buf[2]==0xbf)pos=3;
     while(pos<n){
         size_t a=pos,b,q;
         while(pos<n&&buf[pos]!='\n')pos++;
@@ -33,8 +47,11 @@ static inline int rv_pf_cue(FILE *f,char name[128]){
         while(a<b&&rv_pf_space((unsigned char)buf[a]))a++;
         while(b>a&&rv_pf_space((unsigned char)buf[b-1]))b--;
         if(a==b)continue;
+        /* REM is non-semantic metadata; all track/index lines stay strict. */
+        if(b-a>=3&&rv_pf_eq(buf+a,3,"REM")&&
+            (b-a==3||rv_pf_space((unsigned char)buf[a+3])))continue;
         if(stage==0){
-            if(b-a<13||!rv_pf_eq(buf+a,4,"FILE")||buf[a+4]!=' ')return RV_PF_PROFILE;
+            if(b-a<13||!rv_pf_eq(buf+a,4,"FILE")||!rv_pf_space((unsigned char)buf[a+4]))return RV_PF_PROFILE;
             a+=5;while(a<b&&rv_pf_space((unsigned char)buf[a]))a++;
             if(a==b||buf[a++]!='"')return RV_PF_PROFILE;
             q=a;while(q<b&&buf[q]!='"')q++;
@@ -42,16 +59,18 @@ static inline int rv_pf_cue(FILE *f,char name[128]){
             for(size_t i=a;i<q;i++){
                 unsigned c=(unsigned char)buf[i];
                 if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||
-                    c==' '||c=='_'||c=='-'||c=='.'))return RV_PF_PROFILE;
+                    c==' '||c=='_'||c=='-'||c=='.'||c=='('||c==')'||
+                    c=='['||c==']'||c==','||c=='\''||c=='!'||c=='&'||c=='+'))return RV_PF_PROFILE;
             }
             if(!rv_pf_eq(buf+q-4,4,".BIN"))return RV_PF_PROFILE;
             memcpy(temp,buf+a,q-a);temp[q-a]=0;
-            a=q+1;while(a<b&&rv_pf_space((unsigned char)buf[a]))a++;
+            a=q+1;if(a==b||!rv_pf_space((unsigned char)buf[a]))return RV_PF_PROFILE;
+            while(a<b&&rv_pf_space((unsigned char)buf[a]))a++;
             if(!rv_pf_eq(buf+a,b-a,"BINARY"))return RV_PF_PROFILE;
         }else if(stage==1){
-            if(!rv_pf_eq(buf+a,b-a,"TRACK 01 MODE2/2352"))return RV_PF_PROFILE;
+            if(!rv_pf_cue_words(buf,a,b,"TRACK","01","MODE2/2352"))return RV_PF_PROFILE;
         }else if(stage==2){
-            if(!rv_pf_eq(buf+a,b-a,"INDEX 01 00:00:00"))return RV_PF_PROFILE;
+            if(!rv_pf_cue_words(buf,a,b,"INDEX","01","00:00:00"))return RV_PF_PROFILE;
         }else return RV_PF_PROFILE;
         stage++;
     }
