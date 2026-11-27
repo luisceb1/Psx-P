@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "disc_preflight.h"
+#include "disc_inspect.h"
 #include <assert.h>
 static unsigned char disc[32][2352];
 static unsigned char *payload(unsigned n){return disc[n]+24;}
@@ -36,7 +36,7 @@ static int image(size_t bytes,rv_pf_result *r){
     FILE *f=tmpfile();assert(f);assert(fwrite(disc,1,bytes,f)==bytes);rewind(f);
     int rc=rv_pf_bin(f,r);fclose(f);return rc;
 }
-int main(void){
+int main(int argc,char **argv){
     char name[128]="unchanged";
     assert(cue("FILE \"Fixture.bin\" BINARY\r\nTRACK 01 MODE2/2352\r\nINDEX 01 00:00:00\r\n",name)==RV_PF_OK);
     assert(!strcmp(name,"Fixture.bin"));
@@ -53,6 +53,24 @@ int main(void){
     assert(image(sizeof(disc),&r)==RV_PF_VOLUME&&!memcmp(&r,&saved,sizeof(r)));
     fixture();memset(payload(23),0,2048);
     assert(image(sizeof(disc),&r)==RV_PF_EXE&&!memcmp(&r,&saved,sizeof(r)));
+    if(argc==2){
+        char path[512];
+        rv_inspect_result result=rv_inspect_dir(argv[1]);
+        assert(result.phase==RV_INSPECT_CUE_OPEN&&!rv_inspect_ok(&result));
+        assert(rv_inspect_path(path,sizeof(path),argv[1],"GAME.CUE"));
+        FILE *f=fopen(path,"wb");assert(f);
+        const char text[]="FILE \"Fixture.bin\" BINARY\nTRACK 01 MODE2/2352\nINDEX 01 00:00:00\n";
+        assert(fwrite(text,1,sizeof(text)-1,f)==sizeof(text)-1);assert(!fclose(f));
+        result=rv_inspect_dir(argv[1]);
+        assert(result.phase==RV_INSPECT_BIN_OPEN&&!rv_inspect_ok(&result));
+        fixture();
+        assert(rv_inspect_path(path,sizeof(path),argv[1],"Fixture.bin"));
+        f=fopen(path,"wb");assert(f);
+        assert(fwrite(disc,1,sizeof(disc),f)==sizeof(disc));assert(!fclose(f));
+        result=rv_inspect_dir(argv[1]);
+        assert(rv_inspect_ok(&result)&&result.meta.pc==0x80010000&&!strcmp(result.meta.boot_name,"PSX.EXE;1"));
+        puts("disc inspector frontend: PASS (missing CUE, missing BIN, external fixture)");
+    }
     puts("disc preflight: PASS (CUE, ISO9660, boot, EXE, read-only failure)");
     return 0;
 }

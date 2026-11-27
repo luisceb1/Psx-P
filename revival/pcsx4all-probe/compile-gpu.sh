@@ -185,3 +185,12 @@ psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -c /revival/revival/pcsx4all-probe/p
 make -C "$out" -f /revival/revival/pcsx4all-probe/pause-test/Makefile
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Standalone read-only disc inspector, no emulation objects.
+out=$(dirname "$out")/inspect-test
+mkdir -p "$out"
+psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -c /revival/revival/pcsx4all-probe/inspect-test/inspect_main.c -o "$out/inspect_main.o"
+psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -c /revival/revival/storage.c -o "$out/storage.o"
+make -C "$out" -f /revival/revival/pcsx4all-probe/inspect-test/Makefile
+test -s "$out/EBOOT.PBP"
+sha256sum "$out/EBOOT.PBP"
