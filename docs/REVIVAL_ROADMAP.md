@@ -6,7 +6,8 @@
 - [x] Compile the minimally modernized legacy target with a modern PSPDEV SDK; preserve full logs.
 - [x] Build and link SDL 1.2.15 from pinned PSP source; remove SDL_mixer from default link. Historical comparison retained.
 - [x] Resolve modern compiler and linker errors in isolated changes.
-- [ ] Boot on PSP Go in a separate install directory; confirm clean return to XMB.
+- [x] Boot on PSP Go in a separate install directory; user confirms return to XMB via Square and HOME Exit with v0.0.2.
+- [ ] Investigate PSP Go system Pause Game compatibility separately.
 
 ## M1 — Usability and diagnostics
 - [x] Integrate application-directory resolution for ef0:/ and ms0:/ into startup; hardware validation pending.

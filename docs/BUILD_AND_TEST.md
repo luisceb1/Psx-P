@@ -34,3 +34,7 @@ docker run --rm -v "${PWD}:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; apk
 ## HOME exit regression (0.0.2 candidate)
 
 User observed the 0.0.1 main menu on a real PSP Go, but HOME -> Exit and Pause froze. The original callback set a flag not consumed by the main menu. Candidate uses sceKernelExitGame from the registered callback thread, without cross-thread plugin or stdio cleanup. Test with no disc, BIOS or valuable saves: first Square exit, then relaunch and HOME -> Exit. Repeat three times. Do not select system Pause Game until ordinary exit is verified; PSP Go suspension and snapshot support are not validated. HOME exit is immediate; do not use during memory card writes. This change is not a hardware-verified fix.
+
+### Hardware result — 2026-11-27
+
+User confirms the v0.0.2 test build (92644c6f481795f6b835743a2d7d1874531f22f3) returns to XMB via both Square and HOME Exit on PSP Go. CI run 45968390212 passed all three jobs. Pause Game remains untested after the fix; no game execution or save integrity confirmed. Next: isolated single-track disc test and inspect PSXP_OUT.TXT.
