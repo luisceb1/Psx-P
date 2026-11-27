@@ -428,6 +428,52 @@ static void pad_test(){
     psxMemWrite16(0x1f80104a,0);
     revival_pad_override(false,0);
 }
+extern unsigned probe_stage_w,probe_stage_h;
+extern uint16_t probe_stage_pixel(unsigned,unsigned);
+static void video_mode(unsigned mode){
+    GPU_writeStatus(0x08000000u|mode);
+    GPU_writeStatus(0x05000000);
+    GPU_writeStatus(0x06c60260);
+    GPU_writeStatus(0x07042018);
+    GPU_writeStatus(0x03000000);
+}
+static bool video_submit(unsigned w,unsigned h,uint16_t top,uint16_t bottom){
+    unsigned before=probe_presentations;
+    GPU_requestScreenRedraw();GPU_updateLace();
+    if(report){
+        fprintf(report,"GU extended mode,%08lx,source=%dx%d,stage=%ux%u\n",
+            (unsigned long)gpu.status.reg,(int)gpu.screen.w,(int)gpu.screen.h,
+            probe_stage_w,probe_stage_h);fflush(report);
+    }
+    return probe_presentations>before&&gpu.screen.w==(int)w&&gpu.screen.h==(int)h
+        &&probe_stage_w>0&&probe_stage_h>0
+        &&probe_stage_pixel(0,0)==top
+        &&probe_stage_pixel(probe_stage_w-1,probe_stage_h-1)==bottom;
+}
+static void video_test(){
+    // Diagnostic VRAM fills only, after all earlier integration checks.
+    // The extended presenter is not a field-timed renderer.
+    for(unsigned y=0;y<480;y++)for(unsigned x=0;x<640;x++)
+        gpu.vram[y*1024+x]=y<120?0x001f:0x7c00;
+    video_mode(3);
+    mark("GU 640 progressive",video_submit(640,240,0x801f,0xfc00));
+    video_mode(0x27);
+    mark("GU 640 interlace snapshot",video_submit(640,480,0x801f,0xfc00));
+    // Packed two RGB888 pixels per three VRAM words. Red top, cyan bottom.
+    for(unsigned y=0;y<240;y++){
+        uint16_t *row=gpu.vram+y*1024;
+        for(unsigned x=0;x<128;x++){
+            row[3*x]=y<120?0x00ff:0xff00;
+            row[3*x+1]=0;
+            row[3*x+2]=y<120?0x0000:0xffff;
+            // Two identical pixels; for cyan, bytes are 00 ff ff 00 ff ff.
+            if(y>=120)row[3*x+1]=0x00ff;
+            else row[3*x+1]=0xff00;
+        }
+    }
+    video_mode(0x10);
+    mark("GU RGB24 staged",video_submit(256,240,0x801f,0xffe0));
+}
 static bool fresh_disc=false;
 static bool cd_ack(unsigned expected){
     psxMemWrite8(0x1f801800,1);
@@ -566,7 +612,7 @@ int main(){
 #endif
 #ifdef REVIVAL_SPU_INTEGRATION
     // Record native boot mode before changing it. The upstream HLE uses
-    // GP1(08)=0x27 (640-wide/interlaced), outside the current PSP vout.
+    // GP1(08)=0x27 (640-wide/interlaced), rejected by pre-V6 PSP vout.
     extern unsigned probe_unsupported,probe_blanks;
     if(report){
         fprintf(report,"GU boot mode,%08lx,%d,%d,%d,%d,rgb24=%d,interlace=%d,blank=%d\n",
@@ -605,6 +651,8 @@ int main(){
     runner_test();
     if(report){fprintf(report,"PAD extension begin\n");fflush(report);}
     pad_test();
+    if(report){fprintf(report,"Video extension begin\n");fflush(report);}
+    video_test();
     SPUclose();SPUshutdown();
 #endif
     if(report)fclose(report);
