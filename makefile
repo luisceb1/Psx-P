@@ -57,14 +57,15 @@ PSP_EBOOT_PIC1 = ./IconePSXP/pic1.png
 PSPBIN = $(shell psp-config --psp-prefix)/bin
 
 INCDIR = ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL ./SDL_PSP_LIB_BUILD/include/SDL
-CFLAGS = -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
+## Legacy C dialect and tentative global definitions in PCSX headers.
+CFLAGS = -std=gnu99 -fcommon -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
 #-D_SDL2  
 
 #-D_OPENGL
 
 ## Not Yet But Soon : -DPSP_DYNAREC
 
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+CXXFLAGS = $(filter-out -std=gnu99,$(CFLAGS)) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 
 
