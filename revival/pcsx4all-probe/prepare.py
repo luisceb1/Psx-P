@@ -37,6 +37,19 @@ s = s[:start] + """static inline void clear_insn_cache(void *start, void *end, i
 # Smaller code arena for first port exploration; upstream safety reserve retained.
 replace_once("#define RECMEM_SIZE         (12 * 1024 * 1024)",
              "#define RECMEM_SIZE         (4 * 1024 * 1024)")
+# Replace the C inline-asm dispatcher bridge with an ordinary external call.
+# The separate assembly routine has an explicit save frame and compiler-visible ABI.
+start = s.index("__attribute__((noinline)) static void recFunc(void *fn)")
+end = s.index("\n#endif", start)
+s = s[:start] + """extern "C" void revival_pcsx4all_call(void *fn, void *regs, u32 pc, u32 result[2]);
+static void recFunc(void *fn)
+{
+    u32 result[2];
+    revival_pcsx4all_call(fn, &psxRegs, psxRegs.pc, result);
+    psxRegs.pc = result[0];
+    psxRegs.cycle += result[1];
+}
+""" + s[end:]
 p.write_text(s)
 # Upstream signed constant division uses unsigned values (including abs).
 # Avoid the entire unverified shortcut, not just the GCC overload error.

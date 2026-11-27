@@ -29,16 +29,19 @@ for unit in r3000a psxinterpreter psxevents psxcounters psxmem gte recompiler/mi
     fi
 done
 if [ "$failed" -eq 0 ]; then
+    echo "=== Compile ABI bridge ==="
+    psp-gcc -G0 -c /revival/revival/pcsx4all-probe/call_block.S -o "$out/call_block.o"
+    psp-objdump -dr "$out/call_block.o"
     echo "=== Relocatable core link (not executable) ==="
     psp-g++ -r -nostdlib "$out"/*.o -o "$out/core-relocatable.o"
     psp-size "$out/core-relocatable.o"
     echo "=== Remaining external symbols ==="
     psp-nm -u -C "$out/core-relocatable.o"
     echo "=== Defined CPU backend symbols ==="
-    psp-nm -C "$out/core-relocatable.o" | grep -E ' (psxInt|psxRec|psxCpu|psxBranchTest\(\))
-fi
-exit "$failed"
-
+    psp-nm -C "$out/core-relocatable.o" > "$out/symbols.txt"
+    for symbol in psxInt psxRec psxCpu revival_pcsx4all_call; do
+        grep -F " $symbol" "$out/symbols.txt"
+    done
     echo "=== Host ABI / ISA attributes ==="
     psp-readelf -h -A "$out/core-relocatable.o"
 fi
