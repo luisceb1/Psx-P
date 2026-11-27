@@ -11,7 +11,7 @@ extern "C"
 
   struct pngImage
    {
-    unsigned long width, height; /* typedef long png_uint_32 ^_^;;*/
+    png_uint_32 width, height;
     int bit_depth, color_type, filter_type, compression_type, interlace_type;
     png_structp png_ptr;
     png_infop info_ptr, end_info;
