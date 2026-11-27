@@ -38,7 +38,8 @@ PSP/Plugin.o \
 PSP/pngloader.o \
 PSP/FrontEnd.o \
 PSP/log.o \
-PSP/vram.o 
+PSP/vram.o \
+revival/storage.o 
 
 
 #PSX_PEOPS_SPU/cfg.o \
@@ -57,7 +58,7 @@ PSP_EBOOT_PIC1 = NULL
 
 PSPBIN = $(shell psp-config --psp-prefix)/bin
 
-INCDIR = ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL ./SDL_PSP_LIB_BUILD/include/SDL
+INCDIR = ./revival ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL ./SDL_PSP_LIB_BUILD/include/SDL
 ## Legacy C dialect and tentative global definitions in PCSX headers.
 CFLAGS = -std=gnu99 -fgnu89-inline -fcommon -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
 #-D_SDL2  
@@ -77,7 +78,7 @@ LIBS = ./SDL_PSP_LIB_BUILD/lib/libSDL_mixer.a ./SDL_PSP_LIB_BUILD/lib/libSDL.a -
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSX-P Revival (diagnostic)
+PSP_EBOOT_TITLE = PSX-P Revival 0.0.1 diagnostic
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak
