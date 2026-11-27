@@ -173,3 +173,13 @@ new = "\tcsize = ((u32)*chunk) & 0xfffffffc;\n\tcstat = ((u32)*chunk) & 1;\n\n" 
 if s.count(old) != 1:
     raise SystemExit("Unexpected BIOS heap search")
 bios.write_text(s.replace(old,new,1))
+
+# XA/CDDA ring pointers are unsigned int throughout the original SPU.
+# PSP newlib uint32_t is unsigned long; allocate with the actual element type.
+spu = root / "src/spu/spu_pcsxrearmed/spu.c"
+s = spu.read_text()
+for old,new in (("(uint32_t *)malloc(44100 * sizeof(uint32_t))", "(unsigned int *)malloc(44100 * sizeof(*spu.XAStart))"), ("(uint32_t *)malloc(CDDA_BUFFER_SIZE)", "(unsigned int *)malloc(CDDA_BUFFER_SIZE)")):
+    if s.count(old) != 1:
+        raise SystemExit("Unexpected SPU ring allocation")
+    s = s.replace(old,new,1)
+spu.write_text(s)
