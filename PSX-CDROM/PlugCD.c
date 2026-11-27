@@ -1,4 +1,7 @@
 
+#include <stdlib.h>
+#include "System.h"
+#include "log.h"
 #include "plugins.h"
 #include "PlugCD.h"
 #include "zlib.h"
