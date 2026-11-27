@@ -50,31 +50,34 @@ PSP/vram.o
 #PSX_PEOPS_SPU/psemu.o \
 #PSX_PEOPS_SPU/registers.o \
 
-PSP_EBOOT_SND0 = ./IconePSXP/SND0.AT3 
-PSP_EBOOT_ICON = ./IconePSXP/ICON0.png
-PSP_EBOOT_PIC1 = ./IconePSXP/pic1.png
+# Omit historical artwork and audio from diagnostic builds.
+PSP_EBOOT_SND0 = NULL
+PSP_EBOOT_ICON = NULL
+PSP_EBOOT_PIC1 = NULL
 
 PSPBIN = $(shell psp-config --psp-prefix)/bin
 
 INCDIR = ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL ./SDL_PSP_LIB_BUILD/include/SDL
-CFLAGS = -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
+## Legacy C dialect and tentative global definitions in PCSX headers.
+CFLAGS = -std=gnu99 -fgnu89-inline -fcommon -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
 #-D_SDL2  
 
 #-D_OPENGL
 
 ## Not Yet But Soon : -DPSP_DYNAREC
 
-CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+CXXFLAGS = $(filter-out -std=gnu99 -fgnu89-inline,$(CFLAGS)) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 
 
 LIBDIR =
 LDFLAGS = 
-LIBS=  ./SDL_PSP_LIB_BUILD/lib/libSDL.a ./SDL_PSP_LIB_BUILD/lib/libSDL_mixer.a -lpsphprm -lpsppower -lz -lpng -lc -lm -lpsputility -lpspdebug -lpspge -lpspdisplay -lpspctrl -lpspsdk -lpspuser -lpspkernel -lpsprtc  -lpspaudiolib -lpspaudio -lpspgu
+# Dependent libraries first; PSPSDK and compiler supply the base system libraries last.
+LIBS = ./SDL_PSP_LIB_BUILD/lib/libSDL_mixer.a ./SDL_PSP_LIB_BUILD/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -lpspgu -lpsputility -lpsphprm -lpsppower -lpsprtc -lpspaudio
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSXP Playstation Emulator For PSP (PCSX*)
+PSP_EBOOT_TITLE = PSX-P Revival (diagnostic)
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak

@@ -1,4 +1,6 @@
 
+#include <pspkernel.h>
+#include "System.h"
 #include "plugins.h"
 //#include "psp.h"
 #include <setjmp.h>

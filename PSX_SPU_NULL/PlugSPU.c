@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "System.h"
 #include "plugins.h"
 
 //typedef char HWND;

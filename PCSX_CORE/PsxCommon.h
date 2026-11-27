@@ -61,8 +61,10 @@ typedef struct {
 
 #endif
 
-#if defined (__LINUX__) || defined (__MACOSX__)
+#if defined (__LINUX__) || defined (__MACOSX__) || defined(__PSP__)
+#include <strings.h>
 #define strnicmp strncasecmp
+#define stricmp strcasecmp
 #endif
 
 // Basic types

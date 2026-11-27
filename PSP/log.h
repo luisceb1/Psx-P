@@ -26,6 +26,7 @@ extern "C" {
 #endif// __cplusplus
 //void Log(char const *fmt, ...);
 void DLog(char const *fmt, ...);
+void HWLog(char const *fmt, ...);
 //#define DLog pspDebugScreenPrintf
 void ILog(char const *fmt, ...);
 void SetLogPath(char *path);

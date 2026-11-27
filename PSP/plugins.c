@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "PsxCommon.h"
+#include "log.h"
 
 #ifdef _MSC_VER_
 #pragma warning(disable:4244)

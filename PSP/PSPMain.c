@@ -18,6 +18,8 @@
 #include <pspkernel.h>
 #include <pspdisplay.h>
 #include <pspdebug.h>
+#include <psppower.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -32,7 +34,7 @@
 #include <stdarg.h> 
 #include <errno.h>
 #include <string.h>
-#include "psxcommon.h"
+#include "PsxCommon.h"
 #include "zlib.h"
 #include <png.h>
 #include "Sio.h"
@@ -47,7 +49,7 @@
 #include "prim.h"
 #include "menu.h"
 #include "interp.h"
-#include "psp/vfpu_ops.h"
+#include "vfpu_ops.h"
 
 PSP_MODULE_INFO("PSXP Alpha 2 based on PCSX Emulator", 0x1000, 1, 1);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|0x00004000);
@@ -62,6 +64,9 @@ void SysPrintf(char *fmt, ...) ;
 #define printf	pspDebugScreenPrintf
 
 void dump_threadstatus(void);
+void newCD(const char *filename);
+void InitConfig(void);
+void DoMainGui(void);
 
 int done = 0;
 
@@ -247,10 +252,10 @@ int main(int argc, char* argv[])
 	int loadst = 0;
 	int i;
 
-	getcwd(app_path,256);
+	if (!getcwd(app_path, sizeof(app_path))) return 1;
 
 	ar = &argc;
-	av = &argv;
+	av = argv;
 
 	pspDebugScreenInit();
 
@@ -353,7 +358,7 @@ void SysPrintf(char *fmt, ...) {
 }
 
 void *SysLoadLibrary(char *lib) {
-	return 0xbaadf00d;
+	return (void *)(uintptr_t)0xbaadf00dU;
 }
 
 void *SysLoadSym(void *lib, char *sym) {

@@ -49,6 +49,7 @@
 
 #define _IN_MENU
 
+#include <string.h>
 #include "externals.h"
 #include "draw.h"
 #include "menu.h"

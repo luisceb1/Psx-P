@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "System.h"
 #include "plugins.h"
 #include "Spu.h"
 
@@ -76,7 +77,7 @@ void OpenPlugins() {
 	SPU_registerCallback(SPUirq);
 	SysPrintf("GPU_open()\r\n");
 
-	ret = GPU_open(&gpuDisp, "P©SX", NULL);
+	ret = GPU_open(&gpuDisp, "PÂ©SX", NULL);
 	SysPrintf("after GPU_open()\r\n");
 
 //	if (ret != 0) { SysMessage ("Error Opening GPU Plugin\n"); exit(1); }

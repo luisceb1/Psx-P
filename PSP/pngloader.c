@@ -4,6 +4,7 @@
 
 #include "pngloader.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 unsigned short RGB565(unsigned char r, unsigned char g, unsigned char b) { //smhzc
 	//return ((((b>>3) & 0x1F)<<10)+(((g>>3) & 0x1F)<<5)+(((r>>3) & 0x1F)<<0)+0x8000);
@@ -21,7 +22,7 @@ void BPP24_to_16(struct pngImage *png)
 			r = png->data[png->rowbytes * y + (x*3)];
 			g = png->data[png->rowbytes * y + (x*3)+1];
 			b = png->data[png->rowbytes * y + (x*3)+2];
-			tdat = RGB565(r,g,b);
+			*tdat = RGB565(r,g,b);
 			tdat++;
 		}
 		//memcpy(&png->data[png->rowbytes * y],newdat,png->width*2);
@@ -32,8 +33,8 @@ void BPP24_to_16(struct pngImage *png)
 
 int loadPNGImage(char *fileName, struct pngImage *png)
  {  
-  FILE* pngFile = fopen(fileName, "r");
-  char *signature[8];
+  FILE* pngFile = fopen(fileName, "rb");
+  unsigned char signature[8];
   
   if(! pngFile)
    {
@@ -76,20 +77,19 @@ int loadPNGImage(char *fileName, struct pngImage *png)
    
   png_get_IHDR(png -> png_ptr, png -> info_ptr, &png -> width, &png -> height, &png -> bit_depth, &png -> color_type, &png -> interlace_type, &png -> compression_type, &png -> filter_type);
    
-  if(png -> info_ptr -> channels == 1){
+  if(png_get_channels(png->png_ptr, png->info_ptr) == 1){
     png -> bpp = 8;
 	//DLog("8bpp");
-  }else if(png -> info_ptr -> channels == 2){
+  }else if(png_get_channels(png->png_ptr, png->info_ptr) == 2){
     png -> bpp = 16;
 	//DLog("16bpp");
-  }else if(png -> info_ptr -> channels == 3){
+  }else if(png_get_channels(png->png_ptr, png->info_ptr) == 3){
     png -> bpp = 24;
 	//DLog("24bpp");
-  }else if(png -> info_ptr -> channels == 4){
+  }else if(png_get_channels(png->png_ptr, png->info_ptr) == 4){
     png -> bpp = 32;
 	//DLog("32bpp");
-  }else
-  	//DLog("libpng -> error in bit depth of file \'%s\'\n", fileName);
+  }else { png->bpp = 0; }
 
   
 
