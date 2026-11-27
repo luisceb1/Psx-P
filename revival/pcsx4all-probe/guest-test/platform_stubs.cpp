@@ -40,17 +40,28 @@ void psxHwWrite8(u32,u8) { STOP; }
 void psxHwWrite16(u32,u16) { STOP; }
 void psxHwWrite32(u32,u32) { STOP; }
 #else
-V0(mdecInit) V0(sioInit) V0(cdrReset)
+V0(mdecInit) V0(sioInit)
+#ifndef REVIVAL_CD_INTEGRATION
+V0(cdrReset)
+#endif
 void psxDma0(u32,u32,u32){STOP;}
 void psxDma1(u32,u32,u32){STOP;}
+#ifndef REVIVAL_CD_INTEGRATION
 void psxDma3(u32,u32,u32){STOP;}
 #endif
+#endif
+#ifndef REVIVAL_CD_INTEGRATION
 V0(cdrInterrupt) V0(cdrReadInterrupt) V0(cdrLidSeekInterrupt)
 V0(cdrPlayInterrupt) V0(cdrDmaInterrupt)
 R0(unsigned char,cdrRead0) R0(unsigned char,cdrRead1)
 R0(unsigned char,cdrRead2) R0(unsigned char,cdrRead3)
 V1(cdrWrite0,unsigned char) V1(cdrWrite1,unsigned char)
 V1(cdrWrite2,unsigned char) V1(cdrWrite3,unsigned char)
+#else
+int CheckCdrom(void){STOP;}
+void CALLBACK SPUplayADPCMchannel(xa_decode_t*){STOP;}
+unsigned int CALLBACK SPUgetADPCMBufferRoom(void){STOP;}
+#endif
 #ifndef REVIVAL_GPU_INTEGRATION
 V0(gpuInterrupt) V0(spuInterrupt) V0(gpuotcInterrupt)
 #else

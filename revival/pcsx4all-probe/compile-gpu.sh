@@ -61,3 +61,27 @@ compile /revival/revival/pcsx4all-probe/cd-test/cd_main.cpp cd_main
 make -C "$out" -f /revival/revival/pcsx4all-probe/cd-test/Makefile
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Fourth subsystem: link actual CD controller into a separate combined candidate.
+cdout=$out
+out=$(dirname "$out")/integration-test
+cp "$cdout"/cd_iso.o "$cdout"/cd_ppf.o "$cdout"/cd_controller.o "$cdout"/cd_xa.o "$out/"
+for pair in "guest-test/platform_stubs.cpp:integration_cd_stubs" "integration-test/integration_main.cpp:integration_cd_main"; do
+    unit=${pair%:*}
+    name=${pair#*:}
+    psp-g++ -std=gnu++11 -O2 -G0 -fno-rtti -fno-strict-aliasing \
+        -D__PSP__ -DPSXREC -DREVIVAL_PSP_PROBE -DREVIVAL_GPU_INTEGRATION -DREVIVAL_CD_INTEGRATION \
+        -D'INLINE=static __inline__' -D'asm=__asm__ __volatile__' \
+        -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
+        -Isrc/gpu/gpu_unai -Isrc/spu/spu_pcsxrearmed \
+        -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
+        -c "/revival/revival/pcsx4all-probe/$unit" -o "$out/$name.o"
+done
+cdcombined=$(dirname "$out")/integration-cd-test
+mkdir -p "$cdcombined"
+for obj in core-relocatable gpu_core gpu_unai integration_vout dma_core hw_core cd_iso cd_ppf cd_controller cd_xa integration_cd_stubs integration_cd_main; do
+    cp "$out/$obj.o" "$cdcombined/"
+done
+make -C "$cdcombined" -f /revival/revival/pcsx4all-probe/integration-test/Makefile CD_INTEGRATION=1
+test -s "$cdcombined/EBOOT.PBP"
+sha256sum "$cdcombined/EBOOT.PBP"

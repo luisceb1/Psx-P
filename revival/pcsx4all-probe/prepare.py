@@ -122,3 +122,12 @@ s = s[:a] + """static void stopCDDA() { playing = FALSE; }
 static void startCDDA() { playing = FALSE; }
 \n""" + s[b:]
 iso.write_text(s)
+
+# MSF addresses are nonnegative sector counts; subtract in signed wide type.
+cd = root / "src/cdrom.cpp"
+s = cd.read_text()
+old = "i = abs(i - msf2sec(set_loc));"
+new = "i = (int)((s64)i >= (s64)msf2sec(set_loc) ? (s64)i - (s64)msf2sec(set_loc) : (s64)msf2sec(set_loc) - (s64)i);"
+if s.count(old) != 1:
+    raise SystemExit("Unexpected CD seek distance expression")
+cd.write_text(s.replace(old, new, 1))

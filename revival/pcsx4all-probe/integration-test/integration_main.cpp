@@ -6,6 +6,9 @@
 #include "r3000a.h"
 #include "psxevents.h"
 #include "psxdma.h"
+#ifdef REVIVAL_CD_INTEGRATION
+#include "cdrom.h"
+#endif
 #include "plugins.h"
 #include "gpu/gpulib/gpu.h"
 PSP_MODULE_INFO("PCSX4ALL integrated",0,1,0);
@@ -73,6 +76,26 @@ static void dma_test(){
         mark("DMA2 completion IRQ",!(HW_DMA2_CHCR&0x01000000u) && !(psxRegs.interrupt&(1u<<PSXINT_GPUDMA)) && (psxHu32(0x1070)&8u));
     }
 }
+#ifdef REVIVAL_CD_INTEGRATION
+static void cd_test(){
+    setup(&psxRec);
+    psxEvqueueInit();
+    // Reset controller without opening a disc; issue Getstat through real MMIO.
+    cdrReset();
+    psxMemWrite8(0x1f801800,0);
+    psxMemWrite8(0x1f801801,1);
+    bool queued=(psxRegs.interrupt&(1u<<PSXINT_CDR))!=0;
+    mark("CD Getstat event queued",queued);
+    if(queued){
+        psxRegs.cycle=psxRegs.intCycle[PSXINT_CDR].sCycle+psxRegs.intCycle[PSXINT_CDR].cycle;
+        psxBranchTest();
+        bool ready=(psxMemRead8(0x1f801800)&0x20)!=0;
+        unsigned char response=psxMemRead8(0x1f801801);
+        mark("CD Getstat response",ready && !(psxRegs.interrupt&(1u<<PSXINT_CDR)));
+        if(report){fprintf(report,"CD status,%02x\n",response);fflush(report);}
+    }
+}
+#endif
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
@@ -94,6 +117,9 @@ int main(){
     mark("Dynarec GP0",b);
     mark("GPR and cycles",a&&b&&cycles==psxRegs.cycle&&!memcmp(regs,psxRegs.GPR.r,sizeof(regs)));
     dma_test();
+#ifdef REVIVAL_CD_INTEGRATION
+    cd_test();
+#endif
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);
     if(report)fclose(report);
