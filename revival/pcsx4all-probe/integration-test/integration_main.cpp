@@ -218,9 +218,117 @@ static bool make_disc(){
     if(fprintf(f,"FILE \"REVIVAL_BOOT.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n")<0)ok=false;
     if(fclose(f))ok=false;return ok;
 }
+// Advance to an already scheduled event; never move guest time backwards.
+static bool dispatch_event(psxEventNum event){
+    if(!(psxRegs.interrupt&(1u<<event)))return false;
+    u32 deadline=psxRegs.intCycle[event].sCycle+psxRegs.intCycle[event].cycle;
+    if(psxRegs.cycle<deadline)psxRegs.cycle=deadline;
+    psxBranchTest();
+    return !(psxRegs.interrupt&(1u<<event));
+}
+static void dma_irq_setup(unsigned channel){
+    psxMemWrite32(0x1f801074,0); // no guest exception during host diagnostic
+    psxMemWrite32(0x1f801070,0);
+    psxMemWrite32(0x1f8010f4,0x7f000000u|(1u<<23)|(1u<<(16+channel)));
+    psxMemWrite32(0x1f8010f0,8u<<(4*channel));
+}
+static bool dma_irq_done(unsigned channel,psxEventNum event,u32 chcr){
+    return dispatch_event(event) && !(psxMemRead32(chcr)&0x01000000u)
+        && (psxHu32(0x1070)&8u) && (psxHu32(0x10f4)&(1u<<(24+channel)));
+}
+static void dma4_test(){
+    const u32 src=0x30000,dst=0x30100;
+    const u16 a[]={0x1234,0xabcd,0x55aa,0x8001,0x0000,0xffff,0x2468,0x1357};
+    const u16 b[]={0xfedc,0x0123,0x4321,0x9876,0xaaaa,0x5555,0x0f0f,0xf0f0};
+    // DMA write verified by independent SPU data-register readback.
+    memcpy(psxM+src,a,sizeof(a));
+    dma_irq_setup(4);
+    psxMemWrite16(0x1f801da6,0x2000);
+    psxMemWrite32(0x1f8010c0,src);
+    psxMemWrite32(0x1f8010c4,0x00010004);
+    psxMemWrite32(0x1f8010c8,0x01000201);
+    bool queued=(psxRegs.interrupt&(1u<<PSXINT_SPUDMA))!=0;
+    mark("DMA4 write queued",queued);
+    mark("DMA4 write IRQ",dma_irq_done(4,PSXINT_SPUDMA,0x1f8010c8));
+    bool write_ok=HW_DMA4_MADR==src+sizeof(a);
+    psxMemWrite16(0x1f801da6,0x2000);
+    for(unsigned i=0;i<8;i++){
+        u16 value=psxMemRead16(0x1f801da8);
+        if(value!=a[i])write_ok=false;
+    }
+    mark("DMA4 RAM to SPU",write_ok);
+    // Independently seed SPU via MMIO; DMA read must not alter RAM guards.
+    psxMemWrite16(0x1f801da6,0x2000);
+    for(unsigned i=0;i<8;i++)psxMemWrite16(0x1f801da8,b[i]);
+    psxMemWrite16(0x1f801da6,0x2000);
+    memset(psxM+dst-4,0x5a,sizeof(b)+8);
+    dma_irq_setup(4);
+    psxMemWrite32(0x1f8010c0,dst);
+    psxMemWrite32(0x1f8010c4,0x00010004);
+    psxMemWrite32(0x1f8010c8,0x01000200);
+    mark("DMA4 read queued",(psxRegs.interrupt&(1u<<PSXINT_SPUDMA))!=0);
+    mark("DMA4 read IRQ",dma_irq_done(4,PSXINT_SPUDMA,0x1f8010c8));
+    mark("DMA4 SPU to RAM",HW_DMA4_MADR==dst+sizeof(b)
+        && !memcmp(psxM+dst,b,sizeof(b)) && psxMu32(dst-4)==0x5a5a5a5au
+        && psxMu32(dst+sizeof(b))==0x5a5a5a5au);
+}
+static bool fresh_disc=false;
+static bool cd_ack(unsigned expected){
+    psxMemWrite8(0x1f801800,1);
+    unsigned cause=psxMemRead8(0x1f801803)&7;
+    unsigned status=psxMemRead8(0x1f801801);
+    psxMemWrite8(0x1f801803,0x1f);
+    psxMemWrite8(0x1f801800,0);
+    psxMemWrite32(0x1f801070,0);
+    return cause==expected && !(status&1);
+}
+static void dma3_test(){
+    // Reopen ONLY the freshly generated disc, after V2 display diagnostics.
+    if(!fresh_disc){mark("DMA3 fixture reopen",false);return;}
+    SetIsoFile("REVIVAL_BOOT.bin");
+    bool opened=CDR_init()==0&&CDR_open()==0;
+    mark("DMA3 fixture reopen",opened);
+    if(!opened)return;
+    cdrReset();
+    psxMemWrite32(0x1f801074,0);
+    psxMemWrite32(0x1f801070,0);
+    // Setloc to PVD sector 00:02:16 in BCD, then ReadN via normal CD MMIO.
+    psxMemWrite8(0x1f801800,0);
+    psxMemWrite8(0x1f801802,0);
+    psxMemWrite8(0x1f801802,2);
+    psxMemWrite8(0x1f801802,0x16);
+    psxMemWrite8(0x1f801801,2);
+    bool loc=dispatch_event(PSXINT_CDR)&&cd_ack(3);
+    mark("DMA3 Setloc ACK",loc);
+    if(loc){
+        psxMemWrite8(0x1f801801,6);
+        bool read=dispatch_event(PSXINT_CDR)&&cd_ack(3);
+        mark("DMA3 ReadN ACK",read);
+        bool ready=read&&dispatch_event(PSXINT_CDREAD)&&cd_ack(1);
+        mark("DMA3 sector ready",ready);
+        if(ready){
+            const u32 dst=0x31000;
+            memset(psxM+dst-4,0x5a,2048+8);
+            dma_irq_setup(3);
+            psxMemWrite8(0x1f801803,0x80);
+            psxMemWrite32(0x1f8010b0,dst);
+            psxMemWrite32(0x1f8010b4,512);
+            psxMemWrite32(0x1f8010b8,0x11000000);
+            mark("DMA3 queued",(psxRegs.interrupt&(1u<<PSXINT_CDRDMA))!=0);
+            mark("DMA3 CD to RAM",!memcmp(psxM+dst,data(16),2048)
+                &&psxMu32(dst-4)==0x5a5a5a5au&&psxMu32(dst+2048)==0x5a5a5a5au);
+            mark("DMA3 completion IRQ",dma_irq_done(3,PSXINT_CDRDMA,0x1f8010b8));
+        }
+    }
+    if(psxRegs.interrupt&(1u<<PSXINT_CDREAD))psxEvqueueRemove(PSXINT_CDREAD);
+    if(psxRegs.interrupt&(1u<<PSXINT_CDR))psxEvqueueRemove(PSXINT_CDR);
+    CDR_close();CDR_shutdown();
+}
 extern unsigned probe_presentations;
 static void disc_boot_test(){
-    mark("Disc fixture creation",make_disc());
+    fresh_disc=make_disc();
+    mark("Disc fixture creation",fresh_disc);
+    if(!fresh_disc)return;
     SetIsoFile("REVIVAL_BOOT.bin");
     bool opened=CDR_init()==0&&CDR_open()==0;
     mark("Disc BIN/CUE open",opened);if(!opened)return;
@@ -299,7 +407,6 @@ int main(){
     SPUasync(psxRegs.cycle,1);
     mark("SPU update returned",true);
     disc_boot_test();
-    SPUclose();SPUshutdown();
 #endif
 #ifdef REVIVAL_SPU_INTEGRATION
     // Record native boot mode before changing it. The upstream HLE uses
@@ -332,6 +439,14 @@ int main(){
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);
 #endif
+    // Preserve the V2 visual observation window before additional tests.
+    sceKernelDelayThread(10000000);
+#ifdef REVIVAL_SPU_INTEGRATION
+    if(report){fprintf(report,"DMA extension begin\n");fflush(report);}
+    dma4_test();
+    dma3_test();
+    SPUclose();SPUshutdown();
+#endif
     if(report)fclose(report);
-    sceKernelDelayThread(10000000);GPU_shutdown();sceKernelExitGame();return 0;
+    GPU_shutdown();sceKernelExitGame();return 0;
 }
