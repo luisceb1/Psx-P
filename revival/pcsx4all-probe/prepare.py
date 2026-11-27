@@ -99,3 +99,14 @@ extern "C" int revival_pcsx4all_probe_one(void)
     return 1;
 }
 """)
+
+# GPULib's public command list uses uint32_t. PSP newlib makes it unsigned long.
+gpu_if = root / "src/gpu/gpu_unai/gpulib_if.cpp"
+g = gpu_if.read_text()
+for old, new in (("unsigned int *list,", "uint32_t *list,"),
+                 ("unsigned int *list_start", "uint32_t *list_start"),
+                 ("unsigned int *list_end", "uint32_t *list_end")):
+    if g.count(old) != 1:
+        raise SystemExit("Unexpected GPU command declaration: " + old)
+    g = g.replace(old, new, 1)
+gpu_if.write_text(g)

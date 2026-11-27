@@ -12,7 +12,7 @@ compile() {
         -D'INLINE=static __inline__' -D'asm=__asm__ __volatile__' \
         -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
         -Isrc/gpu/gpu_unai -Isrc/spu/spu_pcsxrearmed \
-        -Dgpu_unai -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
+        -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
         -c "$1" -o "$out/$2.o"
 }
 echo "=== GPU Unai + GPULib synthetic probe ==="
