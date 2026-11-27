@@ -14,3 +14,9 @@ The successful CI baseline 45964999775 generated a PBP but uploaded only diagnos
 
 ## Candidate replacement
 The PSP-specific SDL 1.2 source is available at https://github.com/pspdev/SDL-legacy (commit a1f2392fd46137815ada13ff9fdbae21219f49e5). Its README.PSP documents an autoconf-based cross-build. This is a candidate replacement, not evidence that the archived 2006 binary corresponds to this commit. First measure whether SDL_mixer is actually linked, then build SDL from pinned source and record relink instructions and licensing obligations. Consider a native GU backend as an alternative.
+
+## Source-built replacement verified — 2026-11-27
+
+CI run https://github.com/luisceb1/Psx-P/actions/runs/45966094173 passed all three jobs. The source-built link command uses /tmp/psxprv-sdl/lib/libSDL.a and no archived SDL or SDL_mixer library. SDL 1.2.15 source headers declare LGPL-2.1-or-later; individual notices remain applicable. Source revision a1f2392fd46137815ada13ff9fdbae21219f49e5, compatibility patch revival/patches/sdl-pspsdk-types.patch, build script revival/build-source-sdl.sh. Observed SDL archive SHA-256: 660c1165e6e55fafff897752ae437dc58b38dd9e8851093196a723729f72723b. Observed PBP SHA-256: 7edd5c4db5f9d627e79e56d3832009b43dc8834eb327f96d7cfc8dce72cd1e17. Hashes describe that run, not a bit-for-bit reproducibility guarantee. The historical comparison build still uses the archived SDL. It is not the recommended hardware test build.
+
+Remaining gates: investigate SDL_iconv.c realloc pointer warning; record SDK and other linked dependency versions and corresponding sources; trace Kymaera-derived log file notices; prepare source and static relinking materials with applicable licenses; hardware smoke test. Do not publish PBP until clearance. Build logs and symbols only are uploaded.

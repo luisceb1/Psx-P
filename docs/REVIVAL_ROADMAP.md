@@ -4,7 +4,7 @@
 - [x] Record exact upstream commit: 6f7f300223294859215c42b618fe853d0f847222.
 - [ ] Inventory licenses and assets.
 - [x] Compile the minimally modernized legacy target with a modern PSPDEV SDK; preserve full logs.
-- [ ] Replace or rebuild obsolete bundled SDL libraries from corresponding source if required.
+- [x] Build and link SDL 1.2.15 from pinned PSP source; remove SDL_mixer from default link. Historical comparison retained.
 - [x] Resolve modern compiler and linker errors in isolated changes.
 - [ ] Boot on PSP Go in a separate install directory; confirm clean return to XMB.
 
