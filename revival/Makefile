@@ -11,7 +11,7 @@ test:
 	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/display_stage_test.c -o display_stage_test
 	./display_stage_test
 	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/disc_preflight_test.c -o disc_preflight_test
-	@set -e; d=$(mktemp -d); trap 'rm -f "$d/GAME.CUE" "$d/Fixture.bin"; rmdir "$d"' EXIT; ./disc_preflight_test "$d"; $(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect; ./disc_inspect "$d"
+	@set -e; d=$$(mktemp -d); test -n "$$d"; trap 'rm -f "$$d/GAME.CUE" "$$d/Fixture.bin"; rmdir "$$d"' EXIT; ./disc_preflight_test "$$d"; $(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect; ./disc_inspect "$$d"
 inspect:
 	$(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect
 clean:
