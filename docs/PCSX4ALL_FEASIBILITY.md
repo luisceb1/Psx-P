@@ -44,3 +44,17 @@ CI 45989391917 passed both jobs: nine core units, bridge, relocatable link (4,67
 CI 45989621794: corrected ISA corpus 11/11, ABI EBOOT packaging passed, all nine core modules and relocatable link passed. Guest harness compile failed on missing psxevents.h (PSXINT_NEXT_EVENT). Add header and second trusted single-block test for SW/LW and explicit load-delay NOP; verify RAM word and GPR/PC against literal expected values as well as interpreter. Still no execution or performance evidence; memory calls from generated code remain a runtime gate.
 
 CI 45989980801: both jobs passed; first synthetic guest EBOOT fully linked (SHA256 6071a5e2c4edc057962050e156ab7fe94a519e7244e320163be9dab697a1a09a). Extend trusted PC allowlist for a 20,000-iteration loop; bounded dispatch, compare expected registers and PC, record cold-start wall times (includes initial compilation) and guest cycles. Add code rewrite via psxMemWrite32 at block entry, not proof of arbitrary SMC. Log to local PCSX4ALL_PROBE.TXT, flush per test, request 333/166 and record actual clocks. No game/BIOS, no uploaded binaries. This is not a game performance benchmark; peripherals and event dispatch remain outside the test.
+
+## First physical PSP Go validation — 2026-11-27
+
+User-reported local EBOOT SHA256 matches CI 45990141530: 5eeabdfbb9036dbd3eec9ab350821cde79880a35030bd2c43873b21415e84a31. Probe v2 reports CPU 333 MHz, bus 166 MHz. Original user log:
+
+```text
+PCSX4ALL guest probe v2 cpu=333 bus=166
+ALU + branch,PASS,PASS,PASS,10,10
+RAM store/load,PASS,PASS,PASS,14,14
+loop,PASS,69567,23661,160006,160006,20000
+rewrite,PASS
+```
+
+Interpreter 69,567 us; dynarec 23,661 us including cold compilation; speedup 2.9402x; wall-time reduction 65.99%. Both engines report identical cycles in these workloads. Explicit block-entry rewrite passed. This is one physical run on synthetic code, not a game/FPS benchmark; independent ABI executable not physically tested. Actual event queue, broader load delays, MMIO, exceptions, arbitrary SMC, GPU/SPU/CD and game compatibility remain unvalidated. No direct comparison with legacy fastcore. Next priority: minimal platform integration of real peripheral modules, retain interpreter fallback and bounded synthetic regression; no arbitrary timing changes or public binary release.
