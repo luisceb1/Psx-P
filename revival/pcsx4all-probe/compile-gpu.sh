@@ -134,3 +134,19 @@ done
 make -C "$out" -f /revival/revival/pcsx4all-probe/integration-test/Makefile CD_INTEGRATION=1 EXE_INTEGRATION=1 HLE_INTEGRATION=1
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Compile the original single-thread SPU and null output backend separately.
+out=$(dirname "$out")/spu-objects
+mkdir -p "$out"
+echo "=== SPU portable C compile probe ==="
+for unit in spu dma freeze out nullsnd registers; do
+    psp-gcc -std=gnu99 -O2 -G0 -fno-strict-aliasing \
+        -D__PSP__ -DPSXREC -DREVIVAL_PSP_PROBE \
+        -D'INLINE=static __inline__' \
+        -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/spu/spu_pcsxrearmed \
+        -DSPU_PCSXREARMED -c "src/spu/spu_pcsxrearmed/$unit.c" -o "$out/$unit.o"
+    echo "PASS SPU $unit"
+done
+psp-gcc -r -nostdlib "$out"/*.o -o "$out/spu-relocatable.o"
+psp-nm -u "$out/spu-relocatable.o"
+psp-size "$out/spu-relocatable.o"

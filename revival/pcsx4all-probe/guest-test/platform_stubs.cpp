@@ -87,6 +87,10 @@ R0(unsigned char,sioRead8) R0(u16,sioRead16) R0(u32,sioRead32)
 V1(sioWrite8,unsigned char) V1(sioWrite16,u16) V1(sioWrite32,u32)
 R0(u16,sioReadBaud16) R0(u16,sioReadCtrl16) R0(u16,sioReadMode16) R0(u16,sioReadStat16)
 V1(sioWriteBaud16,u16) V1(sioWriteCtrl16,u16) V1(sioWriteMode16,u16)
+#else
+unsigned short pad_read(int){return 0xffff;}
+bool FileExists(const char*){STOP;}
+#endif
 #ifndef REVIVAL_GPU_INTEGRATION
 V0(GPU_updateLace) R0(uint32_t,GPU_readData) R0(uint32_t,GPU_readStatus)
 V1(GPU_writeData,uint32_t)
