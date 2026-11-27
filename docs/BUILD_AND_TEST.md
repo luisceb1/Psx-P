@@ -38,3 +38,21 @@ User observed the 0.0.1 main menu on a real PSP Go, but HOME -> Exit and Pause f
 ### Hardware result — 2026-11-27
 
 User confirms the v0.0.2 test build (92644c6f481795f6b835743a2d7d1874531f22f3) returns to XMB via both Square and HOME Exit on PSP Go. CI run 45968390212 passed all three jobs. Pause Game remains untested after the fix; no game execution or save integrity confirmed. Next: isolated single-track disc test and inspect PSXP_OUT.TXT.
+
+## 0.0.3 timing probe (experimental)
+
+User reports Resident Evil 1 boots with a real BIOS on PSP Go in v0.0.2, but the BIOS logo and execution are extremely slow. No quantitative speed or gameplay completion verified. This probe does not modify CPU cycles, counter rates or rendering algorithms.
+
+Use a new isolated directory PSXPRV3. Copy the same lawful BIOS and disc, not existing saves. Set PERF_MODE.TXT to legacy, single or uncapped (ASCII, one word). Default: legacy. Single removes the redundant PCFrameCap in standard non-frameskip mode. Uncapped is a short diagnostic only, never a gameplay recommendation. Each launch overwrites PERF.CSV when emulation begins. Test the same BIOS-logo launch with O for 30–60 seconds per mode; return to XMB via HOME and copy PERF.CSV before the next test. Keep region, files, storage and clock unchanged. CSV reports wall time, legacy GPU lace calls, emulated counter VBlank starts, legacy cycle delta, time in cap routines (including CheckFrameRate/FrameSkip bookkeeping), and buffer swap time; these are not game FPS or proof of timing accuracy. Clock values and mode recorded. If no rows appear, report that and PSXP_OUT.TXT. Do not select Pause Game or write valuable saves during tests.
+
+## 0.0.4 presentation probe
+
+The user's single-mode CSV contains 41 intervals over 85.018118 s at CPU 333 MHz and bus 166 MHz. For the 17 intervals with swap/wall > 0.4 and laces/s < 20, the weighted rates are 10.128 laces/s, 59.253% swap time and 0.029% cap time. The 17 intervals with laces/s > 50 average 58.740 laces/s. These are legacy update counts, not display FPS or accurate PS1 timing.
+
+New columns split the stretched presentation path into VRAM conversion, scaling, SDL blit and flip; other paths can contribute to swap_us without appearing in these four columns. New PERF_MODE.TXT value native uses single pacing and a guarded direct 32-bit RGB-to-BGR copy for the full-screen software surface only. It falls back to SDL when format or locking conditions differ. native_hits counts successful fast-path copies. Compare single versus native using the identical BIOS and disc, check colors and log, and do not assume speedup until measured.
+
+## 0.0.5 fused presentation experiment
+
+Native-mode user CSV: 32 intervals, 66.977094 s, 333/166 MHz, zero native_hits. 16 slow intervals (swap/wall > 0.4, laces/s < 20) comprise 32.816905 s and 9.964 laces/s. Conversion 24.274%, scale 8.430%, SDL blit 25.541%, flip 0.023%, cap 0.031% of wall time. Previous native-copy hypothesis was not exercised; no speedup claim.
+
+New direct mode fuses source sampling, 15/24-bit RGB conversion and scaling into the actual SDL screen surface, honoring destination pitch and RGB masks; no intermediate copy. Conservative source bounds and unsupported mode fallback. Old rasterizer, pacing and SDL flip unchanged. direct uses single pacing; native_hits counts direct frames, convert_us includes fused work. Direct skips legacy intermediate gun cursor, preview and scanline cases by falling back. Compare same disc/BIOS and check colors, image geometry, CSV and PSXP_OUT.TXT (surface format). Host tests cover RGB packing, 24-bit input, destination pitch, borders and rejection without writes. Real hardware still required.

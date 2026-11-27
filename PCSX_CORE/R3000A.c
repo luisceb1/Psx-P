@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "PsxCommon.h"
+#include "perf.h"
 
 int psxInit() {
 
@@ -106,6 +107,7 @@ void psxBranchTest() {
 		// GPU Update Vsync 
 		base_count=0;
 		GPU_updateLace();
+		revival_perf_lace(psxRegs.cycle);
                
 }
 

@@ -5545,13 +5545,99 @@ void NoStretchSwap(void)
 
 ////////////////////////////////////////////////////////////////////////
 
+/* PSP-specific presentation experiment; preserve the old path as fallback. */
+#include "perf.h"
+#include "pixel.h"
+#include "present.h"
+#include "log.h"
+#if defined(__PSP__) && defined(_SDL) && !defined(_SDL2)
+static int revival_direct_frame(void)
+{
+    static int logged;
+    int ok;
+    unsigned long long t;
+    SDL_Surface *d = display;
+    if (!revival_perf_direct || iUseNoStretchBlt || iUseScanLines ||
+        usCursorActive || XPimage || !d || !d->format) return 0;
+    if (!logged) {
+        DLog("direct surface: %dx%d pitch=%d bpp=%d masks=%08lx/%08lx/%08lx/%08lx flags=%08lx", 
+             d->w,d->h,d->pitch,d->format->BitsPerPixel,(unsigned long)d->format->Rmask,
+             (unsigned long)d->format->Gmask,(unsigned long)d->format->Bmask,
+             (unsigned long)d->format->Amask,(unsigned long)d->flags);
+        logged = 1;
+    }
+    if (d->w != 480 || d->h != 272 || d->format->BitsPerPixel != 32 ||
+        d->clip_rect.x || d->clip_rect.y || d->clip_rect.w != 480 || d->clip_rect.h != 272 ||
+        d->format->Gmask != 0x0000ff00 ||
+        !((d->format->Rmask == 0x000000ff && d->format->Bmask == 0x00ff0000) ||
+          (d->format->Rmask == 0x00ff0000 && d->format->Bmask == 0x000000ff)) ||
+        (d->format->Amask != 0 && d->format->Amask != 0xff000000)) return 0;
+    t = revival_perf_now();
+    if (SDL_LockSurface(d) < 0) return 0;
+    ok = revival_present((const uint16_t *)psxVuw, d->pixels, d->pitch,
+        PSXDisplay.DisplayPosition.x, PSXDisplay.DisplayPosition.y,
+        PreviousPSXDisplay.Range.x1, PreviousPSXDisplay.DisplayMode.y,
+        PreviousPSXDisplay.Range.x0, PreviousPSXDisplay.Range.y0,
+        !!PSXDisplay.RGB24, d->format->Rmask == 0x00ff0000);
+    SDL_UnlockSurface(d);
+    if (!ok) return 0;
+    revival_perf_stage(0, t);
+    revival_perf_native_hit();
+    return 1;
+}
+
+static int revival_blit_full(SDL_Surface *src, SDL_Surface *dst)
+{
+    int y, x;
+    if (revival_perf_native && src && dst && src->format && dst->format &&
+        src->format->BitsPerPixel == 32 && dst->format->BitsPerPixel == 32 &&
+        src->format->Rmask == 0x00ff0000 && src->format->Gmask == 0x0000ff00 &&
+        src->format->Bmask == 0x000000ff && src->format->Amask == 0 &&
+        dst->format->Rmask == 0x000000ff && dst->format->Gmask == 0x0000ff00 &&
+        dst->format->Bmask == 0x00ff0000 && dst->format->Amask == 0 &&
+        !(src->flags & (SDL_SRCALPHA | SDL_SRCCOLORKEY | SDL_HWSURFACE)) &&
+        !(dst->flags & SDL_HWSURFACE) &&
+        src->w == dst->w && src->h == dst->h &&
+        src->w == 480 && src->h == 272 &&
+        dst->clip_rect.x == 0 && dst->clip_rect.y == 0 &&
+        dst->clip_rect.w == 480 && dst->clip_rect.h == 272 &&
+        src->pitch >= 1920 && dst->pitch >= 1920) {
+        if (SDL_LockSurface(src) == 0) {
+            if (SDL_LockSurface(dst) == 0) {
+                if (src->pixels && dst->pixels &&
+                    !((uintptr_t)src->pixels & 3) && !((uintptr_t)dst->pixels & 3) &&
+                    !(src->pitch & 3) && !(dst->pitch & 3)) {
+                    for (y=0; y<272; ++y) {
+                        const uint32_t *s = (const uint32_t *)((const unsigned char *)src->pixels + y*src->pitch);
+                        uint32_t *d = (uint32_t *)((unsigned char *)dst->pixels + y*dst->pitch);
+                        for (x=0; x<480; ++x) d[x] = revival_swap_rb(s[x]);
+                    }
+                    SDL_UnlockSurface(dst);
+                    SDL_UnlockSurface(src);
+                    revival_perf_native_hit();
+                    return 0;
+                }
+                SDL_UnlockSurface(dst);
+            }
+            SDL_UnlockSurface(src);
+        }
+    }
+    return SDL_BlitSurface(src,NULL,dst,NULL);
+}
+#endif
+
 void DoBufferSwap(void)                                // SWAP BUFFERS
 {                                                      // (we don't swap... we blit only)
+ unsigned long long stage;
  #ifdef _SDL2
 	SDL_Surface *buf;
  #endif
 
 ////FPS_Counter();
+
+#if defined(__PSP__) && defined(_SDL) && !defined(_SDL2)
+ if (revival_direct_frame()) goto revival_presented;
+#endif
 
  if(iUseNoStretchBlt<2)
   {
@@ -5563,18 +5649,22 @@ void DoBufferSwap(void)                                // SWAP BUFFERS
 
 #ifndef _SDL2
 
+ stage = revival_perf_now();
  BlitScreen(pBackBuffer,
             PSXDisplay.DisplayPosition.x,
             PSXDisplay.DisplayPosition.y);
+ revival_perf_stage(0, stage);
  
  if(usCursorActive) ShowGunCursor(pBackBuffer,PreviousPSXDisplay.Range.x0+PreviousPSXDisplay.Range.x1);
 
  //----------------------------------------------------//
 
+ stage = revival_perf_now();
  XStretchBlt((unsigned char *)Xpixels,
                PreviousPSXDisplay.Range.x1+PreviousPSXDisplay.Range.x0,
                PreviousPSXDisplay.DisplayMode.y,
                iResX,iResY);
+ revival_perf_stage(1, stage);
 
  //----------------------------------------------------//
 #else
@@ -5610,9 +5700,16 @@ SDL_FreeSurface(buf);
            0, 0, 0, 0,
            iResX, iResY);
 #else
+ stage = revival_perf_now();
+#if defined(__PSP__) && defined(_SDL) && !defined(_SDL2)
+ revival_blit_full(Ximage,display);
+#else
  SDL_BlitSurface(Ximage,NULL,display,NULL);
 #endif
+ revival_perf_stage(2, stage);
 #endif
+#endif
+ revival_presented:
  if(ulKeybits&KEY_SHOWFPS) DisplayText();               // paint menu text
   {
    if(szDebugText[0] && ((time(NULL) - tStart) < 2))
@@ -5651,7 +5748,9 @@ SDL_FreeSurface(buf);
 #ifndef _SDL
  XSync(display,False); 
 #else
+ stage = revival_perf_now();
  SDL_Flip(display);
+ revival_perf_stage(3, stage);
 #endif
 
 }
