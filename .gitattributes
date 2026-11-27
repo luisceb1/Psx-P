@@ -1,2 +1,13 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalize text and retain Unix line endings in every working tree.
+* text=auto eol=lf
+*.sh text eol=lf
+*.patch text eol=lf
+*.a binary
+*.o binary
+*.elf binary
+*.pbp binary
+*.PBP binary
+*.png binary
+*.PNG binary
+*.at3 binary
+*.AT3 binary
