@@ -12,4 +12,6 @@
  */
 int revival_jit_supported(uint32_t word);
 size_t revival_jit_emit(const uint32_t *guest,size_t n,uint32_t *out,size_t cap);
+/* Same leaf ABI and transactional rejection, with block-local GPR caching. */
+size_t revival_jit_emit_regs(const uint32_t *guest,size_t n,uint32_t *out,size_t cap);
 #endif

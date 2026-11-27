@@ -45,5 +45,24 @@ int main(void) {
         assert(!revival_jit_lookup_hot(&c,pc,longblock,8,&fresh));
         assert(!s->valid && !s->verified);
     }
+    {
+        uint32_t pc=0x80010000, other=pc+4;
+        uint32_t longblock[6]={0x24210001,0x24210001,0x24210001,0x24210001,0x24210001,0x24210001};
+        unsigned int cold=15,j;
+        revival_jit_cache_reset(&c);
+        while(revival_jit_index(other)!=revival_jit_index(pc)) other+=4;
+        assert(revival_jit_reg_probe(&c,pc,&cold));
+        assert(!revival_jit_lookup_regs(&c,pc,live,8,&fresh));
+        for(j=0;j<8;j++) { cold=15;assert(!revival_jit_reg_probe(&c,pc,&cold)); }
+        cold=15;assert(revival_jit_reg_probe(&c,pc,&cold));
+        s=revival_jit_lookup_regs(&c,pc,longblock,6,&fresh);
+        assert(s && fresh && s->code_count==10 && c.suppressed==8 && c.reg_guest==6 && c.reg_host==10);
+        s->verified=3;
+        assert(!revival_jit_lookup_regs(&c,other,live,8,&fresh));
+        assert(revival_jit_reg_probe(&c,pc,&cold));
+        assert(revival_jit_lookup_regs(&c,pc,longblock,6,&fresh)==s && !fresh && s->verified==3);
+        longblock[0]=0x08000000;
+        assert(!revival_jit_lookup_regs(&c,pc,longblock,6,&fresh) && !s->valid && !s->verified);
+    }
     puts("JIT cache tests passed");return 0;
 }

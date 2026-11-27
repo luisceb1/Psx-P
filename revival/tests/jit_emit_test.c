@@ -17,7 +17,7 @@ static void simulate(const uint32_t *code,size_t n,uint32_t *g) {
         unsigned imm=w&65535u; int32_t si=(int16_t)imm;
         if(op==0x23||op==0x2b) {
             assert(rs==4 && !(imm&3) && imm>0 && imm<128);
-            if(op==0x23) h[rt]=g[imm/4]; else g[imm/4]=h[rt];
+            if(op==0x23) { assert((rt>=8 && rt<=15)||rt==24||rt==25);h[rt]=g[imm/4]; } else g[imm/4]=h[rt];
         } else if(!op) {
             switch(fn) {
             case 0:z=b<<sa;break;case 2:z=b>>sa;break;case 3:z=(uint32_t)((int32_t)b>>sa);break;
@@ -28,7 +28,7 @@ static void simulate(const uint32_t *code,size_t n,uint32_t *g) {
             case 8:assert(rs==31 && j+2==n && code[j+1]==0);return;
             default:assert(0);
             }
-            if(rd) h[rd]=z;
+            if(rd) { assert((rd>=8 && rd<=15)||rd==24||rd==25);h[rd]=z; }
         } else {
             switch(op) {
             case 9:z=a+(uint32_t)si;break;
@@ -37,7 +37,7 @@ static void simulate(const uint32_t *code,size_t n,uint32_t *g) {
             case 12:z=a&imm;break;case 13:z=a|imm;break;case 14:z=a^imm;break;
             case 15:z=imm<<16;break;default:assert(0);
             }
-            if(rt)h[rt]=z;
+            if(rt) { assert((rt>=8 && rt<=15)||rt==24||rt==25);h[rt]=z; }
         }
     }
     assert(0);
@@ -85,5 +85,40 @@ int main(void) {
     guest[0]=0x20210001;assert(!revival_jit_emit(guest,1,code,REVIVAL_JIT_MAX_WORDS)); /* ADDI traps */
     assert(!revival_jit_emit(guest,0,code,REVIVAL_JIT_MAX_WORDS));
     assert(!revival_jit_emit(guest,33,code,REVIVAL_JIT_MAX_WORDS));
+
+    /* Repeated guest writes stay in one host register. Zero is never read
+     * from the guest array. 32 ADDIU instructions need one load, one final
+     * store, 32 ALU instructions and the two return words. */
+    for(j=0;j<32;j++) guest[j]=enc_i(9,1,1,1);
+    n=revival_jit_emit_regs(guest,32,code,REVIVAL_JIT_MAX_WORDS);
+    assert(n==36);
+    g[1]=7;simulate(code,n,g);assert(g[1]==39);
+    code[0]=0xdeadbeef;
+    assert(!revival_jit_emit_regs(guest,32,code,35) && code[0]==0xdeadbeef);
+    guest[31]=0x08000000;
+    assert(!revival_jit_emit_regs(guest,32,code,REVIVAL_JIT_MAX_WORDS) && code[0]==0xdeadbeef);
+    /* Seeded differential corpus: all supported opcode classes, aliasing,
+     * zero, saturation of the eight cached registers, and boundary values. */
+    {
+        static const unsigned fn[]={0,2,3,4,6,7,0x21,0x23,0x24,0x25,0x26,0x27,0x2a,0x2b};
+        uint32_t seed=0x65fe0021u, a[32],b[32],old[REVIVAL_JIT_MAX_WORDS];
+        unsigned trial,t;
+        for(trial=0;trial<4096;trial++) {
+            size_t len=1+trial%32, oldn;
+            for(t=0;t<32;t++) { seed=1664525u*seed+1013904223u;a[t]=seed;b[t]=seed; }
+            for(t=0;t<len;t++) {
+                unsigned rs,rt,rd,kind,shift;
+                seed=1664525u*seed+1013904223u;rs=(seed>>16)&31u;rt=(seed>>21)&31u;rd=(seed>>26)&31u;
+                seed=1664525u*seed+1013904223u;kind=(seed>>16)%21u;shift=(seed>>24)&31u;
+                if(kind<14) guest[t]=enc_r(kind<3?0:rs,rt,rd,kind<3?shift:0,fn[kind]);
+                else guest[t]=enc_i(kind+9-14,kind==20?0:rs,rt,seed);
+            }
+            oldn=revival_jit_emit(guest,len,old,REVIVAL_JIT_MAX_WORDS);
+            n=revival_jit_emit_regs(guest,len,code,REVIVAL_JIT_MAX_WORDS);
+            assert(oldn && n && n<=oldn);
+            simulate(old,oldn,a);simulate(code,n,b);
+            assert(!memcmp(a,b,sizeof(a)));
+        }
+    }
     puts("Allegrex emitter tests passed");return 0;
 }

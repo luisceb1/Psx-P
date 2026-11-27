@@ -819,6 +819,7 @@ static unsigned int shadow_attempts, shadow_blocks, shadow_words, shadow_mismatc
 int revival_jit_shadow_enabled;
 int revival_jit_native_enabled;
 int revival_jit_hot_enabled;
+int revival_jit_regs_enabled;
 static unsigned int hot_cold;
 static unsigned int native_blocks,native_words,native_audits;
 static unsigned int native_since_audit;
@@ -844,8 +845,8 @@ static int intJitShadow(void) {
     ++shadow_attempts;
     if(!revival_jit_native_enabled && (shadow_attempts&63u)!=0) return 0;
     live=(const uint32_t *)PSXM(pc);
-    if(!live || !revival_jit_supported(live[0])) return 0;
-    slot=revival_jit_hot_enabled ? revival_jit_lookup_hot(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh) : revival_jit_lookup(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh);
+    if(!live || (!revival_jit_regs_enabled && !revival_jit_supported(live[0]))) return 0;
+    slot=revival_jit_regs_enabled ? revival_jit_lookup_regs(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh) : revival_jit_hot_enabled ? revival_jit_lookup_hot(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh) : revival_jit_lookup(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh);
     if(!slot) return 0;
     n=slot->guest_count;
     if(fresh) {
@@ -876,6 +877,7 @@ static int intJitShadow(void) {
         revival_jit_shadow_enabled=0;
         revival_jit_native_enabled=0;
         revival_jit_hot_enabled=0;
+        revival_jit_regs_enabled=0;
         DLog("JIT shadow mismatch at %08lx; disabled",(unsigned long)pc);
     } else {
         slot->verified=revival_jit_verified_next(slot->verified);
@@ -884,9 +886,9 @@ static int intJitShadow(void) {
     return 1; /* interpreter already executed this block */
 }
 void revival_jit_shadow_snapshot(FILE *f) {
-    fprintf(f,",%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%u",shadow_attempts,shadow_blocks,
+    fprintf(f,",%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d,%u,%u,%u,%u",shadow_attempts,shadow_blocks,
         shadow_words,shadow_mismatch,shadow_cache.hits,shadow_cache.misses,
-        shadow_cache.changed,shadow_cache.rejected,native_blocks,native_words,native_audits,revival_jit_native_enabled,hot_cold);
+        shadow_cache.changed,shadow_cache.rejected,native_blocks,native_words,native_audits,revival_jit_native_enabled,hot_cold,shadow_cache.suppressed,shadow_cache.reg_guest,shadow_cache.reg_host);
 }
 #endif
 
@@ -902,7 +904,7 @@ static void intExecute() {
     for (;;) {
 #ifdef __PSP__
         if((revival_jit_shadow_enabled || revival_jit_native_enabled) &&
-           (!revival_jit_hot_enabled || revival_jit_hot_probe(&shadow_cache,(uint32_t)psxRegs.pc,&hot_cold)) && intJitShadow()) continue;
+           (revival_jit_regs_enabled ? revival_jit_reg_probe(&shadow_cache,(uint32_t)psxRegs.pc,&hot_cold) : (!revival_jit_hot_enabled || revival_jit_hot_probe(&shadow_cache,(uint32_t)psxRegs.pc,&hot_cold))) && intJitShadow()) continue;
 #endif
         execI();
     }
