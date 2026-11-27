@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
 	pspDebugScreenInit();
 
 	SetLogPath(app_path);
-	DLog("PSX-P Revival 0.0.5 perf test; app=%s", app_path);
+	DLog("PSX-P Revival 0.0.6 perf test; app=%s", app_path);
 	{
 		const char *dirs[] = {"ISO", "BIOS", "MC", "SaveStates"};
 		struct stat st;
@@ -394,14 +394,27 @@ void SysClose() {
 	ReleasePlugins();
 }
 
+/* The old logger opened the memory card for every BIOS putchar.
+ * Retain guest call behavior, but batch single-character diagnostics. */
 void SysPrintf(char *fmt, ...) {
-	va_list list;
-	char msg[512];
-
-	va_start(list, fmt);
-	vsnprintf(msg, sizeof(msg), fmt, list);
-	va_end(list);
-	DLog("%s", msg);
+    va_list list;
+    char msg[512];
+    static char line[256];
+    static unsigned int used;
+    unsigned long long t = revival_perf_now();
+    va_start(list, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, list);
+    va_end(list);
+    if (msg[0] && !msg[1]) {
+        if (msg[0] != '\n' && msg[0] != '\r') line[used++] = msg[0];
+        if (msg[0] == '\n' || msg[0] == '\r' || used == sizeof(line)-1) {
+            if (used) { line[used] = 0; DLog("%s", line); used = 0; }
+        }
+    } else {
+        if (used) { line[used] = 0; DLog("%s", line); used = 0; }
+        if (msg[0]) DLog("%s", msg);
+    }
+    revival_perf_component(2, t);
 }
 
 void *SysLoadLibrary(char *lib) {

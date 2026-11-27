@@ -1,3 +1,4 @@
+#include "perf.h"
 
 #include <stdlib.h>
 #include "System.h"
@@ -307,12 +308,14 @@ long CDR__getTD(unsigned char track, unsigned char *buffer) {
 }
 
 long CDR__readTrack(unsigned char *time) {
+    unsigned long long t = revival_perf_now();
 //    SysPrintf("start CDR_readTrack()\r\n");
 //    printf("readTrack at %02d:%02d:%02d\n", BCDToInt(time[0]), BCDToInt(time[1]), BCDToInt(time[2]));
 
     //	cdrom_reinit();
 
     seekSector(BCDToInt(time[0]), BCDToInt(time[1]), BCDToInt(time[2]));
+    revival_perf_component(1, t);
 
     //SysPrintf("end CDR_readTrack()\r\n");
     return 0;
