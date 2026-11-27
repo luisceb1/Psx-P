@@ -23,13 +23,15 @@
 #include "boottrace.h"
 #include "timer_policy.h"
 static unsigned char timer_fired[3];
+static unsigned long reset_period[3];
 
 static int cnts = 4;
 
 static void psxRcntUpd(unsigned long index) {
 	psxCounters[index].sCycle = psxRegs.cycle;
 	if (revival_timer_fix && index < 3) {
-		psxCounters[index].Cycle = revival_timer_delay(psxCounters[index].count, psxCounters[index].target, psxCounters[index].rate, BIAS, psxCounters[index].mode);
+		reset_period[index] = revival_timer_delay(0, psxCounters[index].target, psxCounters[index].rate, BIAS, psxCounters[index].mode);
+		psxCounters[index].Cycle = psxCounters[index].count ? revival_timer_delay(psxCounters[index].count, psxCounters[index].target, psxCounters[index].rate, BIAS, psxCounters[index].mode) : reset_period[index];
 		return;
 	}
 //	if (((!(psxCounters[index].mode & 1)) || (index!=2)) &&
@@ -46,7 +48,10 @@ static void psxRcntUpd(unsigned long index) {
 static void psxRcntReset(unsigned long index) {
 //	SysPrintf("psxRcntReset %x (mode=%x)\n", index, psxCounters[index].mode);
 	psxCounters[index].count = 0;
-	psxRcntUpd(index);
+	if (revival_fastcore && index < 3) {
+		psxCounters[index].sCycle = psxRegs.cycle;
+		psxCounters[index].Cycle = reset_period[index];
+	} else psxRcntUpd(index);
 	if (index < 3) ++revival_timer_events[index];
 	if (revival_timer_fix && index < 3) {
 		if (revival_timer_irq(psxCounters[index].mode, timer_fired[index])) {
@@ -258,6 +263,10 @@ int psxRcntFreeze(gzFile f, int Mode) {
 
 	gzfreezel(psxCounters);
 	gzfreezel(Unused);
+	if (Mode == 0 && revival_fastcore) {
+		unsigned int i;
+		for (i=0;i<3;i++) reset_period[i] = revival_timer_delay(0, psxCounters[i].target, psxCounters[i].rate, BIAS, psxCounters[i].mode);
+	}
 
 	return 0;
 }
