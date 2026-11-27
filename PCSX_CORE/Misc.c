@@ -431,6 +431,10 @@ int SaveState(char *file) {
 	int Size;
 	unsigned char *pMem;
 
+#ifdef REVIVAL_PEOPS_AUDIO
+	SysMessage("Save states disabled in experimental audio build");
+	return -1;
+#endif
 	f = gzopen(file, "wb");
 	if (f == NULL) return -1;
 
@@ -481,6 +485,10 @@ int LoadState(char *file) {
 	SPUFreeze_t *spufP;
 	int Size;
 	char header[32];
+#ifdef REVIVAL_PEOPS_AUDIO
+	SysMessage("Load states disabled in experimental audio build");
+	return -1;
+#endif
 
 	f = gzopen(file, "rb");
 	if (f == NULL) return -1;

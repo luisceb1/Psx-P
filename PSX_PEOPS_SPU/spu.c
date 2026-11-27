@@ -103,6 +103,9 @@
 #include "debug.h"
 //#include "record.h"
 #include "resource.h"
+#include "audio_backend.h"
+#include "audio_clock.h"
+static struct revival_audio_clock audio_clock;
  
 ////////////////////////////////////////////////////////////////////////
 // SPU_d_ version infos/name
@@ -144,9 +147,9 @@ REVERBInfo      rvb;
 unsigned long   dwNoiseVal=1;                          // global noise generator
 
 unsigned short  spuCtrl=0;                             // some vars to store psx reg infos
-unsigned short  SPUStat=0;
-unsigned short  SPUIrq=0;             
-unsigned long   SPUAddr=0xffffffff;                    // address into SPU_d_ mem
+unsigned short  spuStat=0;
+unsigned short  spuIrq=0;             
+unsigned long   spuAddr=0;                    // address into SPU_d_ mem
 int             bEndThread=0;                          // thread handlers
 int             bThreadEnded=0;
 int             bSpuInit=0;
@@ -525,7 +528,8 @@ static void *MAINThread(void *arg)
  int bIRQReturn=0;SPUCHAN * pChannel;
                             
 
- while(!bEndThread)                                    // until we are shutting down
+ int budget = 1; /* one bounded 45-frame mixing block per guest async call */
+ while(!bEndThread && budget-- > 0)                    // until we are shutting down
   {
    //--------------------------------------------------//
    // ok, at the beginning we are looking if there is
@@ -543,7 +547,7 @@ static void *MAINThread(void *arg)
    else iSecureStart=0;                                // 0: no new channel should start
 
    while(!iSecureStart && !bEndThread &&               // no new start? no thread end?
-         (SoundGetBytesBuffered()>TESTSIZE))           // and still enuff data in sound buffer?
+         (0) /* output congestion must not stop guest SPU state advancement */)           // and still enuff data in sound buffer?
     {
      iSecureStart=0;                                   // reset secure
 
@@ -603,7 +607,7 @@ static void *MAINThread(void *arg)
             {
              start=pChannel->pCurr;                    // set up the current pos
 
-             if (start == (unsigned char*)-1)          // special "stop" sign
+             if (start == (unsigned char*)-1 || !start || (uintptr_t)start < (uintptr_t)spuMemC || (uintptr_t)start > (uintptr_t)spuMemC+0x80000-16)          // special "stop" sign
               {
                pChannel->bOn=0;                        // -> turn everything off
                pChannel->ADSRX.lVolume=0;
@@ -621,6 +625,7 @@ static void *MAINThread(void *arg)
              predict_nr=(int)*start;start++;
              shift_factor=predict_nr&0xf;
              predict_nr >>= 4;
+             if(predict_nr>4) predict_nr=0;
              flags=(int)*start;start++;
 
              // -------------------------------------- // 
@@ -859,7 +864,7 @@ ENDX:   ;
   // feed the sound
   // wanna have around 1/60 sec (16.666 ms) updates
 
-  if(iCycle++>16)                                      
+  if(++iCycle>=4)                                      
    {                                                  
     //- zn qsound mixer callback ----------------------//
 
@@ -918,6 +923,12 @@ DWORD WINAPI MAINThreadEx(LPVOID lpParameter)
 
 void CALLBACK SPU_d_async(unsigned long cycle)
 {
+ unsigned int blocks;
+ unsigned long long started;
+ if(!bSpuInit || !bSPUIsOpen) return;
+ blocks=revival_audio_clock_add(&audio_clock,(uint32_t)cycle);
+ if(!blocks) return;
+ started=revival_audio_begin_mix();
 
  if(iSpuAsyncWait)
   {
@@ -946,9 +957,10 @@ void CALLBACK SPU_d_async(unsigned long cycle)
 #ifdef _WINDOWS
    MAINProc(0,0,0,0,0);                                // -> experimental win mode... not really tested... don't like the drawbacks
 #else
-   MAINThread(0);                                      // -> linux high-compat mode
+   while(blocks--) MAINThread(0);                       // bounded elapsed-cycle budget
 #endif
   }
+ revival_audio_end_mix(started);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -979,7 +991,8 @@ void CALLBACK SPU_d_playADPCMchannel(xa_decode_t *xap)
 {
  if(!iUseXA)    return;                                // no XA? bye
  if(!xap)       return;
- if(!xap->freq) return;                                // no xa freq ? bye
+ if(xap->freq!=18900 && xap->freq!=37800) return;
+ if(xap->nsamples<=0 || xap->nsamples>16384/(xap->stereo?2:1)) return;                                // no xa freq ? bye
 
  FeedXA(xap);                                          // call main XA feeder
 }
@@ -1085,7 +1098,7 @@ void RemoveTimer(void)
 // SETUPSTREAMS: init most of the SPU_d_ buffers
 ////////////////////////////////////////////////////////////////////////
 
-void SetupStreams(void)
+static int SetupStreams(void)
 { 
  int i;
 
@@ -1095,12 +1108,14 @@ void SetupStreams(void)
  else              i=NSSIZE*2;
 
  sRVBStart = (int *)malloc(i*4);                       // alloc reverb buffer
+ if(!pSpuBuffer || !sRVBStart) { free(pSpuBuffer); free(sRVBStart); pSpuBuffer=NULL; sRVBStart=NULL; return 0; }
  memset(sRVBStart,0,i*4);
  sRVBEnd  = sRVBStart + i;
  sRVBPlay = sRVBStart;
 
  XAStart =                                             // alloc xa buffer
   (unsigned long *)malloc(44100*4);
+ if(!XAStart) { free(pSpuBuffer); free(sRVBStart); pSpuBuffer=NULL; sRVBStart=NULL; return 0; }
  XAPlay  = XAStart;
  XAFeed  = XAStart;
  XAEnd   = XAStart + 44100;
@@ -1119,6 +1134,7 @@ void SetupStreams(void)
   }
 
  if(iUseDBufIrq) pMixIrq=spuMemC;                      // enable decoded buffer irqs by setting the address
+ return 1;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1162,8 +1178,8 @@ long SPU_d_open(void)
  iUseXA=1;                                             // just small setup
  iVolume=3;
  iReverbOff=-1;   
- SPUIrq=0;                       
- SPUAddr=0xffffffff;
+ spuIrq=0;                       
+ spuAddr=0;
  bEndThread=0;
  bThreadEnded=0;
  spuMemC=(unsigned char *)spuMem;      
@@ -1178,11 +1194,15 @@ long SPU_d_open(void)
  hWMain = hW;                                          // store hwnd
 #endif
 
- XReadConfig();                                         // read user stuff
- 
- SetupSound();                                         // setup sound (before init!)
-
- SetupStreams();                                       // prepare streaming
+ /* Fixed conservative PSP settings; no legacy external cfg utility. */
+ iUseTimer=2; iUseXA=1; iVolume=3; iXAPitch=0;
+ iSPUIRQWait=0; iUseReverb=0; iUseInterpolation=0; iDisStereo=0; iUseDBufIrq=0;
+ spuCtrl=spuStat=0;
+ memset(spuMem,0,sizeof(spuMem)); memset(regArea,0,sizeof(regArea));
+ iCycle=0; lastch=-1; lastns=0; dwNewChannel=0; iSpuAsyncWait=0; XARepeat=0;
+ memset(&audio_clock,0,sizeof(audio_clock));
+ if(!SetupStreams()) return PSE_SPU_ERR_INIT;
+ if(!SetupSound()) { RemoveStreams(); return PSE_SPU_ERR_INIT; }
 
  SetupTimer();                                         // timer for feeding data
 
@@ -1276,7 +1296,7 @@ long CALLBACK SPU_d_configure(void)
  DialogBox(hInst,MAKEINTRESOURCE(IDD_CFGDLG),
            GetActiveWindow(),(DLGPROC)DSoundDlgProc);
 #else
- StartCfgTool("CFG");
+ /* PSP: no external configuration utility. */
 #endif
  return 0;
 }
@@ -1291,7 +1311,7 @@ void CALLBACK SPU_d_about(void)
  DialogBox(hInst,MAKEINTRESOURCE(IDD_ABOUT),
            GetActiveWindow(),(DLGPROC)AboutDlgProc);
 #else
- StartCfgTool("ABOUT");
+ /* PSP: no external configuration utility. */
 #endif
 }
 

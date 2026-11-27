@@ -319,8 +319,8 @@ void CALLBACK SPU__about(void) {}
 long CALLBACK SPU__test(void) { return 0; }
 
 unsigned short regArea[10000];
-unsigned short spuCtrl,spuStat,spuIrq;
-unsigned long spuAddr;
+static unsigned short spuCtrl,spuStat,spuIrq;
+static unsigned long spuAddr;
 
 void CALLBACK SPU__writeRegister(unsigned long add,unsigned short value) { // Old Interface
 	unsigned long r=add&0xfff;
@@ -528,6 +528,17 @@ void CALLBACK SPU__registerCallback(void (CALLBACK *callback)(void)) {}
 	LoadSym(SPU_##dest, SPU##dest, name, 0); \
 
 void SPU_d_async(unsigned long v);
+#ifdef REVIVAL_PEOPS_AUDIO
+extern void SPU_d_writeRegister(unsigned long, unsigned short);
+extern unsigned short SPU_d_readRegister(unsigned long);
+extern void SPU_d_writeDMAMem(unsigned short *, int);
+extern void SPU_d_readDMAMem(unsigned short *, int);
+extern void SPU_d_playADPCMchannel(xa_decode_t *);
+extern void SPU_d_registerCallback(void (*)(void));
+static long revival_audio_no_freeze(unsigned long mode, SPUFreeze_t *state) {
+    (void)mode; (void)state; return 0;
+}
+#endif
 
 
 int LoadSPUplugin(char *SPUdll) {
@@ -568,6 +579,17 @@ int LoadSPUplugin(char *SPUdll) {
 	LoadSpuSymFAKE(freeze, "SPUfreeze");
 	LoadSpuSymFAKE(registerCallback, "SPUregisterCallback");
 	LoadSpuSymFAKE1(async, "SPUasync");
+#ifdef REVIVAL_PEOPS_AUDIO
+	SPU_writeRegister = SPU_d_writeRegister;
+	SPU_readRegister = SPU_d_readRegister;
+	SPU_writeDMA = SPU_d_writeDMA;
+	SPU_readDMA = SPU_d_readDMA;
+	SPU_writeDMAMem = SPU_d_writeDMAMem;
+	SPU_readDMAMem = SPU_d_readDMAMem;
+	SPU_playADPCMchannel = SPU_d_playADPCMchannel;
+	SPU_registerCallback = SPU_d_registerCallback;
+	SPU_freeze = revival_audio_no_freeze;
+#endif
 /*
 	LoadSpuSym1(init, "SPUinit");
 	LoadSpuSym1(shutdown, "SPUshutdown");

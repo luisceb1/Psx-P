@@ -3,3 +3,7 @@ storage_test
 present_test
 
 timer_policy_test
+
+pcm_queue_test
+
+audio_clock_test

@@ -25,7 +25,7 @@
 //*************************************************************************//
 
 
-unsigned short CALLBACK SPUreadDMA(void);
+unsigned short CALLBACK SPU_d_readDMA(void);
 void CALLBACK SPU_d_readDMAMem(unsigned short * pusPSXMem,int iSize);
 void CALLBACK SPU_d_writeDMA(unsigned short val);
 void CALLBACK SPU_d_writeDMAMem(unsigned short * pusPSXMem,int iSize);

@@ -73,7 +73,7 @@ void OpenPlugins() {
 	if (ret != 0) { SysMessage ("Error Opening CDR Plugin\n"); exit(1); }
 	SysPrintf("SPU_open()\r\n");
 	ret = SPU_open();
-//	if (ret != 0) { SysMessage ("Error Opening SPU Plugin\n"); exit(1); }
+	if (ret != 0) { SysMessage ("Error Opening SPU Plugin: %d\n", ret); exit(1); }
 	SPU_registerCallback(SPUirq);
 	SysPrintf("GPU_open()\r\n");
 

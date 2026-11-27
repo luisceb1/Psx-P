@@ -38,7 +38,7 @@ unsigned short CALLBACK SPU_d_readDMA(void)
 {
  unsigned short s;
 
- s=spuMem[spuAddr>>1];
+ s=spuMem[(spuAddr&0x7ffff)>>1];
 
 
  spuAddr+=2;
@@ -59,7 +59,7 @@ void CALLBACK SPU_d_readDMAMem(unsigned short * pusPSXMem,int iSize)
 
  for(i=0;i<iSize;i++)
   {
-   *pusPSXMem++=spuMem[spuAddr>>1];                    // SPU_d_ addr got by writeregister
+   *pusPSXMem++=spuMem[(spuAddr&0x7ffff)>>1];                    // SPU_d_ addr got by writeregister
    spuAddr+=2;                                         // inc SPU_d_ addr
    if(spuAddr>0x7ffff) spuAddr=0;                      // wrap
   }
@@ -82,7 +82,7 @@ void CALLBACK SPU_d_readDMAMem(unsigned short * pusPSXMem,int iSize)
   
 void CALLBACK SPU_d_writeDMA(unsigned short val)
 {
- spuMem[spuAddr>>1] = val;                             // SPU_d_ addr got by writeregister
+ spuMem[(spuAddr&0x7ffff)>>1] = val;                             // SPU_d_ addr got by writeregister
 
  spuAddr+=2;                                           // inc SPU_d_ addr
  if(spuAddr>0x7ffff) spuAddr=0;                        // wrap
@@ -101,7 +101,7 @@ void CALLBACK SPU_d_writeDMAMem(unsigned short * pusPSXMem,int iSize)
 
  for(i=0;i<iSize;i++)
   {
-   spuMem[spuAddr>>1] = *pusPSXMem++;                  // SPU_d_ addr got by writeregister
+   spuMem[(spuAddr&0x7ffff)>>1] = *pusPSXMem++;                  // SPU_d_ addr got by writeregister
    spuAddr+=2;                                         // inc SPU_d_ addr
    if(spuAddr>0x7ffff) spuAddr=0;                      // wrap
   }

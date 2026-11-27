@@ -23,151 +23,74 @@
 //
 //*************************************************************************//
 
-#include "stdafx.h"
-
-#include "externals.h"
-#include <pspkernel.h>
-#include <pspdebug.h>
-#include <pspaudiolib.h>
-#include "sound.h"
-#include <pspaudio.h>
+/* PSP Revival: replace incomplete historical SDL output with bounded PCM queue. */
 #include <SDL.h>
-#include <SDL_mixer.h>
-#ifdef __PSP__
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include "audio_backend.h"
+#include "pcm_queue.h"
+#include "log.h"
+#include <pspkernel.h>
 
-int soundBufferIndex;
-u8 *sdl_snd_buffer = NULL;
-int sdlSoundLen = 0;
-int soundBufferLen = 0;
-int soundBufferTotalLen = 0;
-typedef int (*pg_threadfunc_t)(int args, void *argp);
-////////////////////////////////////////////////////////////////////////
-// small linux time helper... only used for watchdog
-////////////////////////////////////////////////////////////////////////
-
-unsigned long XtimeGetTime()
-{
-
+static struct revival_pcm_queue queue;
+static int opened;
+static unsigned int produced, consumed, silent, dropped, nonzero;
+static uint64_t mix_us;
+static unsigned int mix_calls;
+static void audio_callback(void *userdata, Uint8 *stream, int len) {
+    unsigned int got;
+    (void)userdata;
+    if(len<=0) return;
+    got=revival_pcm_read(&queue,stream,(unsigned int)len);
+    consumed+=got/4;
+    silent+=((unsigned int)len-got)/4;
 }
-
-////////////////////////////////////////////////////////////////////////
-// oss globals
-////////////////////////////////////////////////////////////////////////
-
-
-////////////////////////////////////////////////////////////////////////
-// SETUP SOUND
-////////////////////////////////////////////////////////////////////////
-
-static volatile int sound_active;
-static int sound_handle;
-static SceUID sound_thread;
-static int sound_volume;
-static int sound_enabled;
-static s16 sound_buffer[2][SOUND_BUFFER_SIZE];
-
-static struct sound_t sound_info;
-
-
-/******************************************************************************
-	グローバル変数
-******************************************************************************/
-
-struct sound_t *sound = &sound_info;
-
-
-/******************************************************************************
-	ローカル関数
-******************************************************************************/
-
-void 
-audioCallback(void *userdata,u8 *buf,int length)
-{
-  if (sdl_snd_buffer) {
-    if (length > soundBufferLen) {
-      length = soundBufferLen;
+int SetupSound(void) {
+    SDL_AudioSpec want, got;
+    if(opened) return 1;
+    memset(&queue,0,sizeof(queue)); memset(&want,0,sizeof(want));
+    produced=consumed=silent=dropped=nonzero=mix_calls=0; mix_us=0;
+    if(SDL_InitSubSystem(SDL_INIT_AUDIO)<0) { DLog("SPU SDL init: %s", SDL_GetError()); return 0; }
+    want.freq=44100; want.format=AUDIO_S16LSB; want.channels=2; want.samples=512;
+    want.callback=audio_callback;
+    if(SDL_OpenAudio(&want,&got)<0) { DLog("SPU SDL open: %s",SDL_GetError()); SDL_QuitSubSystem(SDL_INIT_AUDIO); return 0; }
+    if(got.freq!=44100 || got.format!=AUDIO_S16LSB || got.channels!=2) {
+        DLog("SPU unsupported audio format"); SDL_CloseAudio(); SDL_QuitSubSystem(SDL_INIT_AUDIO); return 0;
     }
-
- //    memcpy(buf, pSpuBuffer, length);
-
-  }
-
+    opened=1;
+    DLog("SPU P.E.Op.S. audio open: %d Hz, %d channels, %d samples",got.freq,got.channels,got.samples);
+    SDL_PauseAudio(0);
+    return 1;
+}
+void RemoveSound(void) {
+    if(!opened) return;
+    SDL_CloseAudio(); opened=0;
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+}
+void SoundFeedStreamData(unsigned char *p,long bytes) {
+    unsigned int n,i,wrote;
+    if(!opened || bytes<=0 || bytes>32768) return;
+    n=(unsigned int)bytes & ~3u;
+    SDL_LockAudio();
+    wrote=revival_pcm_write(&queue,p,n);
+    produced+=n/4; dropped+=(n-wrote)/4;
+    for(i=0;i<n;i+=4) if(p[i]||p[i+1]||p[i+2]||p[i+3]) ++nonzero;
+    SDL_UnlockAudio();
+}
+unsigned long SoundGetBytesBuffered(void) {
+    unsigned int n=0;
+    if(opened) { SDL_LockAudio(); n=queue.used; SDL_UnlockAudio(); }
+    return n;
+}
+unsigned long revival_audio_time_ms(void) { return SDL_GetTicks(); }
+void revival_audio_snapshot(FILE *f) {
+    unsigned int a,b,c,d,e;
+    if(opened) SDL_LockAudio();
+    a=produced;b=consumed;c=silent;d=dropped;e=nonzero;
+    if(opened) SDL_UnlockAudio();
+    fprintf(f,",%u,%u,%u,%u,%u,%llu,%u",a,b,c,d,e,(unsigned long long)mix_us,mix_calls);
 }
 
-
-void SetupSound(void)
-{
-SDL_AudioSpec audio;
-
-  
-    audio.freq = 44100;
-    int soundBufferLen = 1024*2;
-
-
-  audio.format   = AUDIO_S16;
-  audio.channels = 2;
-  audio.samples  = soundBufferLen / 4;
-  audio.callback = audioCallback;
-  audio.userdata = NULL;
-  if(SDL_OpenAudio(&audio, NULL)) {
-    fprintf(stderr,"Failed to open audio: %s\n", SDL_GetError());
-  }
-
-  if (sdl_snd_buffer == NULL) {
-    sdl_snd_buffer = (u8 *)malloc(soundBufferLen);
-  }
-
-  
-  soundBufferTotalLen = soundBufferLen*10;
-  sdlSoundLen = 0;
-
-  sceKernelDelayThread(800000); // Give sound some time to init
-  return 1;
-
-}
-
-////////////////////////////////////////////////////////////////////////
-// REMOVE SOUND
-////////////////////////////////////////////////////////////////////////
-
-void RemoveSound(void)
-{
-
-}
-
-////////////////////////////////////////////////////////////////////////
-// GET BYTES BUFFERED
-////////////////////////////////////////////////////////////////////////
-
-unsigned long SoundGetBytesBuffered(void)
-{
- unsigned long l;
-/*
- if(handle == NULL)                                 // failed to open?
-  return SOUNDSIZE;
- l = 0;//snd_pcm_avail_update(handle);
- if(l<0) return 0;
- if(l<buffer_size/2)                                 // can we write in at least the half of fragments?
-      l=SOUNDSIZE;                                   // -> no? wait
- else l=0;                                           // -> else go on
-*/
- return l;
-}
-
-////////////////////////////////////////////////////////////////////////
-// FEED SOUND DATA
-////////////////////////////////////////////////////////////////////////
-
-void SoundFeedStreamData(unsigned char* pSound,long lBytes)
-{
-
-//sound_buffer[0] = pSound;
-//memcpy(sdl_snd_buffer,(u8*)pSpuBuffer,sizeof(pSpuBuffer));
-}
-
-void sound_thread_set_priority(int priority)
-{
-	//sceKernelChangeThreadPriority(sound_thread, priority);
-}
-
-#endif
+unsigned long long revival_audio_begin_mix(void) { return sceKernelGetSystemTimeWide(); }
+void revival_audio_end_mix(unsigned long long started) { mix_us += sceKernelGetSystemTimeWide()-started; ++mix_calls; }
