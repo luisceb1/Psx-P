@@ -47,7 +47,7 @@
 #include "prim.h"
 #include "menu.h"
 #include "interp.h"
-#include "psp/vfpu_ops.h"
+#include "vfpu_ops.h"
 
 PSP_MODULE_INFO("PSXP Alpha 2 based on PCSX Emulator", 0x1000, 1, 1);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|0x00004000);
