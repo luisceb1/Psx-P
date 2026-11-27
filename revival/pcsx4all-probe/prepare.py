@@ -131,3 +131,18 @@ new = "i = (int)((s64)i >= (s64)msf2sec(set_loc) ? (s64)i - (s64)msf2sec(set_loc
 if s.count(old) != 1:
     raise SystemExit("Unexpected CD seek distance expression")
 cd.write_text(s.replace(old, new, 1))
+
+# Retain original executable and ISO9660 loaders, exclude savestates for now.
+misc = root / "src/misc.cpp"
+s = misc.read_text()
+marker = "// Savestate file handling //"
+if s.count(marker) != 1:
+    raise SystemExit("Unexpected misc savestate boundary")
+s = s[:s.index(marker)]
+# ISO directory extents are frequently unaligned on MIPS.
+old = "int block = *((int*)b);"
+new = "int block = (int)((u32)(u8)b[0] | ((u32)(u8)b[1]<<8) | ((u32)(u8)b[2]<<16) | ((u32)(u8)b[3]<<24));"
+if s.count(old) != 1:
+    raise SystemExit("Unexpected ISO extent read")
+s = s.replace(old,new,1)
+misc.write_text(s)

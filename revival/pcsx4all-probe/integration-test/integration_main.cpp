@@ -8,6 +8,9 @@
 #include "psxdma.h"
 #ifdef REVIVAL_CD_INTEGRATION
 #include "cdrom.h"
+#ifdef REVIVAL_EXE_INTEGRATION
+#include "misc.h"
+#endif
 #endif
 #include "plugins.h"
 #include "gpu/gpulib/gpu.h"
@@ -96,6 +99,36 @@ static void cd_test(){
     }
 }
 #endif
+#ifdef REVIVAL_EXE_INTEGRATION
+static void exe_test(){
+    static unsigned char header[2048],payload[2048];
+    const char *path="REVIVAL_SYNTHETIC.EXE";
+    EXE_HEADER h={};
+    memcpy(h.id,"PS-X EXE",8);
+    h.pc0=start;h.t_addr=start;h.t_size=sizeof(payload);
+    h.gp0=0x80018000u;h.s_addr=0x801fff00u;
+    memcpy(header,&h,sizeof(h));
+    memcpy(payload,program,sizeof(program));
+    FILE *file=fopen(path,"wb");
+    bool made=false;
+    if(file){
+        made=fwrite(header,1,sizeof(header),file)==sizeof(header)
+            && fwrite(payload,1,sizeof(payload),file)==sizeof(payload);
+        if(fclose(file)!=0)made=false;
+    }
+    mark("PS-X EXE creation",made);
+    if(!made)return;
+    setup(&psxRec);
+    memset(psxM+0x10000,0,sizeof(payload));
+    bool loaded=Load(path)==0;
+    bool correct=loaded&&psxRegs.pc==start&&psxRegs.GPR.n.gp==h.gp0
+        &&psxRegs.GPR.n.sp==h.s_addr&&!memcmp(psxM+0x10000,payload,sizeof(payload));
+    mark("PS-X EXE load",correct);
+    bool ran=correct&&revival_pcsx4all_probe_one();
+    GPU_updateLace();
+    mark("PS-X EXE execution",ran&&psxRegs.pc==end_pc&&pixels());
+}
+#endif
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
@@ -119,6 +152,9 @@ int main(){
     dma_test();
 #ifdef REVIVAL_CD_INTEGRATION
     cd_test();
+#endif
+#ifdef REVIVAL_EXE_INTEGRATION
+    exe_test();
 #endif
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);

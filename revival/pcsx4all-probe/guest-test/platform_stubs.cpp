@@ -23,7 +23,9 @@ static void __attribute__((noreturn)) unexpected(const char *name)
 #define V0(name) void name(void) { STOP; }
 #define V1(name,T) void name(T) { STOP; }
 #define R0(T,name) T name(void) { STOP; }
+#ifndef REVIVAL_EXE_INTEGRATION
 char CdromId[10]={0};
+#endif
 struct pl_data_t pl_data={};
 static void trap(void) { STOP; }
 void (*biosA0[256])(void)={trap};
@@ -58,7 +60,9 @@ R0(unsigned char,cdrRead2) R0(unsigned char,cdrRead3)
 V1(cdrWrite0,unsigned char) V1(cdrWrite1,unsigned char)
 V1(cdrWrite2,unsigned char) V1(cdrWrite3,unsigned char)
 #else
+#ifndef REVIVAL_EXE_INTEGRATION
 int CheckCdrom(void){STOP;}
+#endif
 void CALLBACK SPUplayADPCMchannel(xa_decode_t*){STOP;}
 unsigned int CALLBACK SPUgetADPCMBufferRoom(void){STOP;}
 #endif
