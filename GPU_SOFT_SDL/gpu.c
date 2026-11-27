@@ -130,6 +130,7 @@
 #include "menu.h"
 #include "key.h"
 #include "fps.h"
+#include "perf.h"
 
 ////////////////////////////////////////////////////////////////////////
 // PPDK developer must change libraryName field and can change revision and build
@@ -594,6 +595,7 @@ long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
 #endif
 
  ReadConfig();                                         // read registry
+ if (revival_perf_mode == REVIVAL_PERF_UNCAPPED) UseFrameLimit = 0;
 
  InitFPS();
 
@@ -669,7 +671,7 @@ void updateDisplay(void)                               // UPDATE DISPLAY
  {
    static int fpscount; UseFrameSkip=1;
 
-   if(!bSkipNextFrame) DoBufferSwap();                 // -> to skip or not to skip
+   if(!bSkipNextFrame) revival_perf_draw(DoBufferSwap);                 // -> to skip or not to skip
    if(fpscount%6)                                      // -> skip 6/7 frames
         bSkipNextFrame = TRUE;
    else bSkipNextFrame = FALSE;
@@ -680,21 +682,26 @@ void updateDisplay(void)                               // UPDATE DISPLAY
 
  if(UseFrameSkip)                                      // skip ?
  {
-   if(!bSkipNextFrame) DoBufferSwap();                 // -> to skip or not to skip
+   if(!bSkipNextFrame) revival_perf_draw(DoBufferSwap);                 // -> to skip or not to skip
    if(dwActFixes&0xa0)                                 // -> pc fps calculation fix/old skipping fix
     {
      if((fps_skip < fFrameRateHz) && !(bSkipNextFrame))  // -> skip max one in a row
          {bSkipNextFrame = TRUE; fps_skip=fFrameRateHz;}
      else bSkipNextFrame = FALSE;
     }
-   else FrameSkip();
+   else revival_perf_cap(FrameSkip);
   }
  else                                                  // no skip ?
 {
-   DoBufferSwap();                                     // -> swap
+   revival_perf_draw(DoBufferSwap);                    // -> swap
   }
  //SetAutoFrameCap();
-PCFrameCap();	
+/* Keep legacy behavior for comparison. In standard non-skip mode,
+  * CheckFrameRate already calls FrameCap on each GPU lace. */
+ if (revival_perf_mode == REVIVAL_PERF_LEGACY ||
+     (revival_perf_mode == REVIVAL_PERF_SINGLE && UseFrameLimit &&
+      ((dwActFixes & 32) || UseFrameSkip)))
+     revival_perf_cap(PCFrameCap);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -898,7 +905,7 @@ void CALLBACK GPUupdateLace(void)                      // VSYNC
   lGPUstatusRet^=0x80000000;                           // odd/even bit
 
  if(!(dwActFixes&32))                                  // std fps limitation?
-  CheckFrameRate();
+  revival_perf_cap(CheckFrameRate);
 
  if(PSXDisplay.Interlaced)                             // interlaced mode?
   {

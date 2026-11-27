@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <sys/stat.h>
 #include "storage.h"
+#include "perf.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -276,7 +277,7 @@ int main(int argc, char* argv[])
 	pspDebugScreenInit();
 
 	SetLogPath(app_path);
-	DLog("PSX-P Revival 0.0.2 exit test; app=%s", app_path);
+	DLog("PSX-P Revival 0.0.3 perf test; app=%s", app_path);
 	{
 		const char *dirs[] = {"ISO", "BIOS", "MC", "SaveStates"};
 		struct stat st;
@@ -314,7 +315,12 @@ int main(int argc, char* argv[])
 //	pgGeInit();
 
 
-	scePowerSetClockFrequency(333, 333, 166);
+	{
+		int rc = scePowerSetClockFrequency(333, 333, 166);
+		DLog("clock request rc=%d cpu=%d bus=%d", rc,
+		     scePowerGetCpuClockFrequencyInt(), scePowerGetBusClockFrequencyInt());
+	}
+	revival_perf_init();
 
 	
 	OpenPlugins();
@@ -337,6 +343,7 @@ int main(int argc, char* argv[])
 
 	SysPrintf("Loading rom %s",romname);
 	SysPrintf("rom type %d",ROM_LOAD_TYPE);
+revival_perf_begin();
 //	ROM_LOAD_TYPE = 0; //kludge
 	switch(ROM_LOAD_TYPE){
 		case 0://psx file

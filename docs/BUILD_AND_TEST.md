@@ -38,3 +38,9 @@ User observed the 0.0.1 main menu on a real PSP Go, but HOME -> Exit and Pause f
 ### Hardware result — 2026-11-27
 
 User confirms the v0.0.2 test build (92644c6f481795f6b835743a2d7d1874531f22f3) returns to XMB via both Square and HOME Exit on PSP Go. CI run 45968390212 passed all three jobs. Pause Game remains untested after the fix; no game execution or save integrity confirmed. Next: isolated single-track disc test and inspect PSXP_OUT.TXT.
+
+## 0.0.3 timing probe (experimental)
+
+User reports Resident Evil 1 boots with a real BIOS on PSP Go in v0.0.2, but the BIOS logo and execution are extremely slow. No quantitative speed or gameplay completion verified. This probe does not modify CPU cycles, counter rates or rendering algorithms.
+
+Use a new isolated directory PSXPRV3. Copy the same lawful BIOS and disc, not existing saves. Set PERF_MODE.TXT to legacy, single or uncapped (ASCII, one word). Default: legacy. Single removes the redundant PCFrameCap in standard non-frameskip mode. Uncapped is a short diagnostic only, never a gameplay recommendation. Each launch overwrites PERF.CSV when emulation begins. Test the same BIOS-logo launch with O for 30–60 seconds per mode; return to XMB via HOME and copy PERF.CSV before the next test. Keep region, files, storage and clock unchanged. CSV reports wall time, legacy GPU lace calls, emulated counter VBlank starts, legacy cycle delta, time in cap routines (including CheckFrameRate/FrameSkip bookkeeping), and buffer swap time; these are not game FPS or proof of timing accuracy. Clock values and mode recorded. If no rows appear, report that and PSXP_OUT.TXT. Do not select Pause Game or write valuable saves during tests.

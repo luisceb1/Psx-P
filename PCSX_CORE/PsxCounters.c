@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "PsxCommon.h"
+#include "perf.h"
 
 static int cnts = 4;
 
@@ -123,7 +124,8 @@ void psxRcntUpdate() {
 #ifdef GTE_LOG
 			GTE_LOG("VSync\n");
 #endif
-		} else { // VSync Start (240 hsyncs) 
+		} else { // VSync Start (240 hsyncs)
+			revival_perf_vblank(); 
 			psxCounters[3].mode|= 0x10000;
 			psxUpdateVSyncRateEnd();
 			psxRcntUpd(3);

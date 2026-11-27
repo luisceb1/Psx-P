@@ -39,7 +39,8 @@ PSP/pngloader.o \
 PSP/FrontEnd.o \
 PSP/log.o \
 PSP/vram.o \
-revival/storage.o 
+revival/storage.o \
+revival/perf.o
 
 
 #PSX_PEOPS_SPU/cfg.o \
@@ -85,7 +86,7 @@ LIBS = $(SDL_MIXER_LIB) $(SDL_PREFIX)/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSX-P Revival 0.0.2 exit test
+PSP_EBOOT_TITLE = PSX-P Revival 0.0.3 perf test
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak
