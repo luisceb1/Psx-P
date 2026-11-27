@@ -167,6 +167,20 @@ static void hle_test(){
 #endif
 
 #ifdef REVIVAL_SPU_INTEGRATION
+#include "../disc_session.h"
+static rv_disc_session disc_session={RV_DISC_IDLE};
+static const rv_disc_ops disc_ops={CDR_init,CDR_open,CDR_shutdown};
+static bool begin_fixture_disc(){
+    if(disc_session.state!=RV_DISC_IDLE)return false;
+    SetIsoFile("REVIVAL_BOOT.bin");
+    return rv_disc_begin(&disc_session,&disc_ops)==0;
+}
+static bool end_fixture_disc(){
+    if(rv_disc_end(&disc_session,&disc_ops)!=0||disc_session.state!=RV_DISC_IDLE)return false;
+    unsigned char msf[]={0,2,0x16};
+    // The backend must refuse further reads once the handle is closed.
+    return CDR_readTrack(msf)!=0;
+}
 // Minimal original ISO9660 fixture, Mode 2 Form 1 raw sectors.
 // No commercial content. All extents and addresses are fixed and bounded.
 static unsigned char disc[32][2352];
@@ -491,8 +505,7 @@ static bool cd_ack(unsigned expected){
 static void dma3_test(){
     // Reopen ONLY the freshly generated disc, after V2 display diagnostics.
     if(!fresh_disc){mark("DMA3 fixture reopen",false);return;}
-    SetIsoFile("REVIVAL_BOOT.bin");
-    bool opened=CDR_init()==0&&CDR_open()==0;
+    bool opened=begin_fixture_disc();
     mark("DMA3 fixture reopen",opened);
     if(!opened)return;
     cdrReset();
@@ -528,7 +541,7 @@ static void dma3_test(){
     }
     if(psxRegs.interrupt&(1u<<PSXINT_CDREAD))psxEvqueueRemove(PSXINT_CDREAD);
     if(psxRegs.interrupt&(1u<<PSXINT_CDR))psxEvqueueRemove(PSXINT_CDR);
-    CDR_close();CDR_shutdown();
+    mark("DMA3 disc session closed",end_fixture_disc());
 }
 extern unsigned probe_presentations;
 static void disc_boot_test(){
@@ -557,8 +570,7 @@ static void disc_boot_test(){
     }
     fresh_disc=cue_ok&&image_ok;
     if(!fresh_disc)return;
-    SetIsoFile("REVIVAL_BOOT.bin");
-    bool opened=CDR_init()==0&&CDR_open()==0;
+    bool opened=begin_fixture_disc();
     mark("Disc BIN/CUE open",opened);if(!opened)return;
     unsigned char msf[]={0,2,0x16};
     bool sector=CDR_readTrack(msf)==0;
@@ -628,7 +640,7 @@ static void disc_boot_test(){
         memcpy(native_disc_regs,psxRegs.GPR.r,sizeof(native_disc_regs));
         native_disc_cycles=psxRegs.cycle-native_cycle_start;
     }
-    CDR_close();CDR_shutdown();Config.HLE=FALSE;
+    mark("Disc session closed",end_fixture_disc());Config.HLE=FALSE;
 }
 // Direct synthetic boot, independent of the upstream HLE loader opcode.
 // A successful result is not evidence that an arbitrary game can execute.
@@ -806,6 +818,11 @@ int main(){
     video_test();
     if(report){fprintf(report,"Direct disc extension begin\n");fflush(report);}
     direct_disc_test();
+    // Retry a failed CD cleanup before leaving the diagnostic; no reopening.
+    if(disc_session.state!=RV_DISC_IDLE){
+        long rc=rv_disc_end(&disc_session,&disc_ops);
+        if(report){fprintf(report,"Disc final shutdown,%ld\n",rc);fflush(report);}
+    }
     SPUclose();SPUshutdown();
 #endif
     if(report)fclose(report);

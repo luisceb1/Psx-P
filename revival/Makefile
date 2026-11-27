@@ -14,7 +14,9 @@ test:
 	@set -e; d=$$(mktemp -d); test -n "$$d"; trap 'rm -f "$$d/GAME.CUE" "$$d/Fixture.bin"; rmdir "$$d"' EXIT; ./disc_preflight_test "$$d"; $(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect; ./disc_inspect "$$d"
 	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/audio_queue_test.c -o audio_queue_test
 	./audio_queue_test
+	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/disc_session_test.c -o disc_session_test
+	./disc_session_test
 inspect:
 	$(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect
 clean:
-	rm -f storage_test present_test timer_policy_test display_stage_test disc_preflight_test disc_inspect audio_queue_test
+	rm -f storage_test present_test timer_policy_test display_stage_test disc_preflight_test disc_inspect audio_queue_test disc_session_test
