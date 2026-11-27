@@ -26,5 +26,24 @@ int main(void) {
     assert(revival_jit_lookup(&c,0xa0010000,live,8,&fresh) && fresh);
     revival_jit_cache_reset(&c);
     assert(c.hits==0 && c.misses==0 && c.changed==0);
+    /* A short colliding block must not evict a useful compiled block. */
+    {
+        uint32_t longblock[8]={0x24010001,0x24210001,0x24210001,0x24210001,0x24210001,0x24210001,0x08000000,0};
+        uint32_t pc=0x80010000, other=pc+4;
+        unsigned int cold=0,j;
+        while(revival_jit_index(other)!=revival_jit_index(pc)) other+=4;
+        for(j=0;j<15;j++) assert(!revival_jit_hot_probe(&c,pc,&cold));
+        assert(revival_jit_hot_probe(&c,pc,&cold));
+        s=revival_jit_lookup_hot(&c,pc,longblock,8,&fresh);
+        assert(s && fresh && s->guest_count==6);
+        s->verified=3;
+        assert(revival_jit_hot_probe(&c,pc,&cold) && cold==16);
+        assert(!revival_jit_lookup_hot(&c,other,live,8,&fresh));
+        again=revival_jit_lookup_hot(&c,pc,longblock,8,&fresh);
+        assert(again==s && !fresh && s->verified==3);
+        longblock[2]=0x08000000;
+        assert(!revival_jit_lookup_hot(&c,pc,longblock,8,&fresh));
+        assert(!s->valid && !s->verified);
+    }
     puts("JIT cache tests passed");return 0;
 }

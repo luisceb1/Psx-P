@@ -2,26 +2,28 @@
 #include "jit_cache.h"
 #include <string.h>
 void revival_jit_cache_reset(struct revival_jit_cache *c) { memset(c,0,sizeof(*c)); }
-struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
-    uint32_t pc,const uint32_t *live,size_t avail,int *fresh) {
+static struct revival_jit_slot *lookup(struct revival_jit_cache *c,
+    uint32_t pc,const uint32_t *live,size_t avail,int *fresh,int hot) {
     struct revival_jit_slot *s;
-    size_t n,k;
+    size_t n,k,min=hot?REVIVAL_JIT_HOT_MIN_GUEST:REVIVAL_JIT_MIN_GUEST;
     if(fresh)*fresh=0;
-    if(!c||!live||!fresh||(pc&3u)||avail<REVIVAL_JIT_MIN_GUEST) return NULL;
+    if(!c||!live||!fresh||(pc&3u)||avail<min) return NULL;
     if(avail>REVIVAL_JIT_MAX_GUEST)avail=REVIVAL_JIT_MAX_GUEST;
-    s=&c->slots[((pc>>2)^(pc>>11))&(REVIVAL_JIT_CACHE_SLOTS-1u)];
+    s=&c->slots[revival_jit_index(pc)];
     if(s->valid && s->pc==pc) {
-        if(s->guest_count<=avail && !memcmp(s->guest,live,s->guest_count*sizeof(uint32_t))) {
+        if((!hot || (s->code_count && s->guest_count>=min)) && s->guest_count<=avail && !memcmp(s->guest,live,s->guest_count*sizeof(uint32_t))) {
             ++c->hits;
             return s->code_count?s:NULL;
         }
         ++c->changed;
+        s->valid=0;s->verified=0;
     }
-    ++c->misses;s->valid=0;s->verified=0;
+    ++c->misses;
     /* Find the longest supported prefix. Each candidate emitter is bounded. */
     for(n=0;n<avail && revival_jit_supported(live[n]);++n) {}
-    s->pc=pc;
-    if(n<REVIVAL_JIT_MIN_GUEST) {
+    if(n<min && hot) { ++c->rejected;return NULL; }
+    s->valid=0;s->verified=0;s->pc=pc;
+    if(n<min) {
         s->guest_count=REVIVAL_JIT_MIN_GUEST;s->code_count=0;
         memcpy(s->guest,live,s->guest_count*sizeof(uint32_t));
         s->valid=1;++c->rejected;return NULL;
@@ -32,3 +34,6 @@ struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
     s->guest_count=(unsigned int)n;s->code_count=(unsigned int)k;
     s->valid=1;*fresh=1;return s;
 }
+
+struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,uint32_t pc,const uint32_t *live,size_t avail,int *fresh) { return lookup(c,pc,live,avail,fresh,0); }
+struct revival_jit_slot *revival_jit_lookup_hot(struct revival_jit_cache *c,uint32_t pc,const uint32_t *live,size_t avail,int *fresh) { return lookup(c,pc,live,avail,fresh,1); }
