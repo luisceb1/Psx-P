@@ -240,3 +240,71 @@ old = "#define THREAD_ENABLED 1"
 if s.count(old) != 1:
     raise SystemExit("Unexpected SPU thread define")
 spu.write_text(s.replace(old, "#ifndef __PSP__\n#define THREAD_ENABLED 1\n#endif",1))
+
+# PSP synchronous SPU: initialize a fresh state on each successful lifecycle,
+# and validate owned allocations before deriving pointers or using channels.
+s = spu.read_text()
+a = s.index("static void SetupStreams(void)")
+b = s.index("// REMOVESTREAMS", a)
+s = s[:a] + """static int SetupStreams(void)
+{
+ spu.pSpuBuffer = (unsigned char *)malloc(32768);
+ spu.SSumLR = calloc(NSSIZE * 2, sizeof(spu.SSumLR[0]));
+ spu.XAStart = (unsigned int *)malloc(44100 * sizeof(*spu.XAStart));
+ spu.CDDAStart = (unsigned int *)malloc(CDDA_BUFFER_SIZE);
+ if (!spu.pSpuBuffer || !spu.SSumLR || !spu.XAStart || !spu.CDDAStart)
+  return -1;
+
+ spu.XAEnd = spu.XAStart + 44100;
+ spu.XAPlay = spu.XAFeed = spu.XAStart;
+ UpdateXABufferRoom();
+ spu.CDDAEnd = spu.CDDAStart + 16384;
+ spu.CDDAPlay = spu.CDDAFeed = spu.CDDAStart;
+ ClearWorkingState();
+ return 0;
+}
+
+""" + s[b:]
+replace_once("""long CALLBACK SPUinit(void)
+{
+ int i;
+
+ spu.spuMemC = calloc(1, 512 * 1024);""", """long CALLBACK SPUinit(void)
+{
+ int i;
+
+ if (spu.bSpuInit) return 0;
+ memset(&spu, 0, sizeof(spu));
+ memset(iFMod, 0, sizeof(iFMod));
+ memset(RVB, 0, sizeof(RVB));
+ memset(ChanBuf, 0, sizeof(ChanBuf));
+ spu.spuMemC = calloc(1, 512 * 1024);""")
+replace_once(""" SetupStreams();                                       // prepare streaming""", """ if (!spu.spuMemC || !spu.s_chan || !spu.rvb || !spu.SB ||
+     SetupStreams() != 0)
+  goto alloc_failed;""")
+replace_once(""" spu.bSpuInit=1;                                       // flag: we are inited
+
+ return 0;
+}""", """ spu.bSpuInit=1;                                       // flag: we are inited
+
+ return 0;
+
+alloc_failed:
+ RemoveStreams();
+ free(spu.spuMemC);
+ free(spu.s_chan);
+ free(spu.rvb);
+ free(spu.SB);
+ memset(&spu, 0, sizeof(spu));
+ return -1;
+}""")
+spu.write_text(s)
+
+# VRAM allocation happens before renderer/GU acquisition; propagate failure
+# instead of terminating the application before the lifecycle can unwind.
+gpucore = root / "src/gpu/gpulib/gpu.cpp"
+s = gpucore.read_text()
+replace_once("""      printf("ERROR: could not allocate VRAM, exiting..\\n");
+\t  exit(1);""", """      printf("ERROR: could not allocate VRAM\\n");
+      return -1;""")
+gpucore.write_text(s)

@@ -730,10 +730,11 @@ static void direct_disc_test(){
 #ifdef REVIVAL_SPU_INTEGRATION
 #include "../core_session.h"
 static rv_core_session core_session={0};
+static bool core_restarting=false;
 static R3000Acpu *core_cpu_owner=NULL;
 static long core_start_cpu(){
     int rc=psxInit();
-    mark("CPU init",rc==0);
+    mark(core_restarting?"Restart CPU init":"CPU init",rc==0);
     if(rc==0)core_cpu_owner=psxCpu;
     return rc;
 }
@@ -756,7 +757,7 @@ static long core_start_spu(){
         rc=SPUopen();
         if(rc!=0)SPUshutdown();
     }
-    mark("SPU init null backend",rc==0);
+    mark(core_restarting?"Restart SPU init":"SPU init null backend",rc==0);
     if(rc==0){SPUregisterCallback(probe_spu_irq);SPUregisterScheduleCb(probe_spu_schedule);}
     return rc;
 }
@@ -764,7 +765,7 @@ static long core_stop_spu(){return SPUshutdown();}
 static long core_start_gpu(){
     long rc=GPU_init();
     if(rc==0&&!gpu.vram)rc=-1;
-    mark("GPU init",rc==0);
+    mark(core_restarting?"Restart GPU init":"GPU init",rc==0);
     if(rc!=0&&gpu.vram)GPU_shutdown();
     return rc;
 }
@@ -775,6 +776,52 @@ static long core_stop_gpu(){
 static const rv_core_stage core_stages[RV_CORE_STAGES]={
     {core_start_cpu,core_stop_cpu},{core_start_spu,core_stop_spu},{core_start_gpu,core_stop_gpu}
 };
+
+static bool core_is_closed(){
+    return core_session.active==0&&!gpu.vram&&!core_cpu_owner&&!psxCpu
+        &&!psxM&&!psxH&&!psxP&&!psxR;
+}
+static bool seed_restart_state(){
+    const u32 sentinel=0x5ac319e7u;
+    memcpy(psxM+0x1e0000,&sentinel,sizeof(sentinel));
+    psxRegs.GPR.r[8]=sentinel;
+    gpu.vram[1024*512-1]=0x1234;
+    psxMemWrite16(0x1f801da6,0x2000);
+    psxMemWrite16(0x1f801da8,0x6c39);
+    psxMemWrite16(0x1f801da6,0x2000);
+    return psxMu32(0x1e0000)==sentinel&&psxRegs.GPR.r[8]==sentinel
+        &&gpu.vram[1024*512-1]==0x1234&&psxMemRead16(0x1f801da8)==0x6c39;
+}
+static void restart_fixture_test(){
+    if(!core_is_closed()||disc_session.state!=RV_DISC_IDLE)return;
+    core_restarting=true;
+    memset(&Config,0,sizeof(Config));Config.Cpu=CPU_DYNAREC;
+    long rc=rv_core_begin(&core_session,core_stages);
+    if(rc!=0){
+        if(report){fprintf(report,"Restart init failure,%ld,remaining=%u\n",rc,core_session.active);fflush(report);}
+        return;
+    }
+    extern unsigned probe_stage_w,probe_stage_h;
+    bool gpu_fresh=gpu.vram[1024*512-1]==0&&probe_presentations==0
+        &&probe_stage_w==0&&probe_stage_h==0;
+    Config.HLE=TRUE;Config.Cpu=CPU_INTERPRETER;psxCpu=&psxInt;
+    psxReset();
+    mark("Restart RAM and GPR reset",psxMu32(0x1e0000)==0&&psxRegs.GPR.r[8]==0);
+    psxMemWrite16(0x1f801da6,0x2000);
+    mark("Restart VRAM and SPU reset",gpu_fresh&&psxMemRead16(0x1f801da8)==0);
+    setup(&psxInt);
+    video_mode(0);
+    for(unsigned i=0;i<32&&psxRegs.pc!=end_pc;i++)execI();
+    bool rendered=psxRegs.pc==end_pc&&pixels();
+    mark("Restart interpreter GP0",rendered);
+    unsigned before=probe_presentations;
+    GPU_requestScreenRedraw();GPU_updateLace();
+    mark("Restart GU submission",rendered&&probe_presentations>before);
+    Config.HLE=FALSE;
+    rc=rv_core_end(&core_session,core_stages);
+    mark("Restart ordered shutdown",rc==0&&core_is_closed());
+    if(report){fprintf(report,"Restart shutdown,%ld,remaining=%u\n",rc,core_session.active);fflush(report);}
+}
 #endif
 int main(){
     pspDebugScreenInit();
@@ -872,10 +919,13 @@ int main(){
         if(report){fprintf(report,"Disc final shutdown,%ld\n",rc);fflush(report);}
     }
     // Never tear down lower-level core resources if the CD still owns them.
+    bool seeded=disc_session.state==RV_DISC_IDLE&&seed_restart_state();
+    mark("Restart sentinel seed",seeded);
     long shutdown_rc=disc_session.state==RV_DISC_IDLE?rv_core_end(&core_session,core_stages):-1;
-    mark("Core ordered shutdown",shutdown_rc==0&&core_session.active==0&&!gpu.vram
-        &&!core_cpu_owner&&!psxCpu&&!psxM&&!psxH&&!psxP&&!psxR);
+    bool closed=shutdown_rc==0&&core_is_closed();
+    mark("Core ordered shutdown",closed);
     if(report){fprintf(report,"Core shutdown,%ld,remaining=%u\n",shutdown_rc,core_session.active);fflush(report);}
+    if(closed&&seeded)restart_fixture_test();
 #else
     GPU_shutdown();
 #endif

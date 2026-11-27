@@ -23,6 +23,9 @@ static bool ready=false;
 struct Vertex { uint16_t u,v; int16_t x,y,z; };
 void pl_clear_borders() {}
 int vout_init(void) {
+    if(ready)return -1;
+    probe_presentations=probe_blanks=probe_unsupported=0;
+    probe_present_us=0;probe_stage_w=probe_stage_h=0;
     sceGuInit();
     sceGuStart(GU_DIRECT,list);
     sceGuDrawBuffer(GU_PSM_5551,(void*)0,512);
@@ -44,6 +47,7 @@ int vout_init(void) {
 }
 int vout_finish(void) {
     if(ready){sceGuSync(0,0);sceGuDisplay(GU_FALSE);sceGuTerm();ready=false;}
+    probe_stage_w=probe_stage_h=0;
     return 0;
 }
 void vout_blank(void) {
