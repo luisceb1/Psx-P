@@ -37,16 +37,24 @@ static inline int revival_display_stage(const uint16_t *vram,size_t words,uint16
     if(!vram||!dst||!p||words<1024u*512u||p->x>=1024||p->y>=512||
         !p->w||p->w>640||!p->h||p->h>512||!p->stage_w||p->stage_w>512||
         !p->stage_h||p->stage_h>512||p->stage_w>stride||stride>capacity/p->stage_h)return 0;
+    /* Common 15-bit modes need neither horizontal resampling nor
+       per-pixel wrap arithmetic. Keep the general path for other windows. */
+    const int direct15=!p->rgb24&&p->stage_w==p->w&&p->x+p->w<=1024u;
     unsigned map[512];
-    for(unsigned x=0;x<p->stage_w;x++){
-        unsigned sx=x*p->w/p->stage_w;
-        map[x]=p->rgb24?p->x*2+sx*3:p->x+sx;
+    if(!direct15){
+        for(unsigned x=0;x<p->stage_w;x++){
+            unsigned sx=p->stage_w==p->w?x:x*p->w/p->stage_w;
+            map[x]=p->rgb24?p->x*2+sx*3:p->x+sx;
+        }
     }
     for(unsigned y=0;y<p->stage_h;y++){
-        unsigned sy=y*p->h/p->stage_h;
+        unsigned sy=p->stage_h==p->h?y:y*p->h/p->stage_h;
         const uint16_t *row=vram+((p->y+sy)&511u)*1024;
         uint16_t *out=dst+y*stride;
-        if(!p->rgb24){
+        if(direct15){
+            const uint16_t *src=row+p->x;
+            for(unsigned x=0;x<p->stage_w;x++)out[x]=(uint16_t)(src[x]|0x8000u);
+        }else if(!p->rgb24){
             for(unsigned x=0;x<p->stage_w;x++)out[x]=(uint16_t)(row[map[x]&1023u]|0x8000u);
         }else{
             for(unsigned x=0;x<p->stage_w;x++)out[x]=revival_display_color(row,map[x],1);
