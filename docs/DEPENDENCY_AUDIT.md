@@ -11,3 +11,6 @@ Status: preliminary inventory, not release clearance.
 - No Sony BIOS or game images may be distributed.
 
 The successful CI baseline 45964999775 generated a PBP but uploaded only diagnostic logs. Keep emulator binary artifacts disabled for now. A local source build is available for personal hardware testing; it is not a public release.
+
+## Candidate replacement
+The PSP-specific SDL 1.2 source is available at https://github.com/pspdev/SDL-legacy (commit a1f2392fd46137815ada13ff9fdbae21219f49e5). Its README.PSP documents an autoconf-based cross-build. This is a candidate replacement, not evidence that the archived 2006 binary corresponds to this commit. First measure whether SDL_mixer is actually linked, then build SDL from pinned source and record relink instructions and licensing obligations. Consider a native GU backend as an alternative.
