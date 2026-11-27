@@ -11,11 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - run: make -C revival test
   legacy-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Record environment and compile
         shell: bash
         run: |
@@ -23,7 +27,7 @@ jobs:
           git rev-parse HEAD > baseline.log
           docker pull pspdev/pspdev:latest >> baseline.log 2>&1
           docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest >> baseline.log
-          docker run --rm -v "$PWD:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; psp-gcc --version; psp-config --pspsdk-path; make -f makefile; test -s EBOOT.PBP' 2>&1 | tee -a baseline.log
+          docker run --rm -v "$PWD:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; psp-gcc --version; psp-config --pspsdk-path; make -k -f makefile; test -s EBOOT.PBP' 2>&1 | tee -a baseline.log
       - name: Upload diagnostic log (not binary)
         if: always()
         uses: actions/upload-artifact@v4
