@@ -18,6 +18,8 @@
 #include <pspkernel.h>
 #include <pspdisplay.h>
 #include <pspdebug.h>
+#include <psppower.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -62,6 +64,9 @@ void SysPrintf(char *fmt, ...) ;
 #define printf	pspDebugScreenPrintf
 
 void dump_threadstatus(void);
+void newCD(const char *filename);
+void InitConfig(void);
+void DoMainGui(void);
 
 int done = 0;
 
@@ -247,10 +252,10 @@ int main(int argc, char* argv[])
 	int loadst = 0;
 	int i;
 
-	getcwd(app_path,256);
+	if (!getcwd(app_path, sizeof(app_path))) return 1;
 
 	ar = &argc;
-	av = &argv;
+	av = argv;
 
 	pspDebugScreenInit();
 
@@ -353,7 +358,7 @@ void SysPrintf(char *fmt, ...) {
 }
 
 void *SysLoadLibrary(char *lib) {
-	return 0xbaadf00d;
+	return (void *)(uintptr_t)0xbaadf00dU;
 }
 
 void *SysLoadSym(void *lib, char *sym) {
