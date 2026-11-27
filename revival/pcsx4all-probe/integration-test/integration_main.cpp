@@ -29,6 +29,7 @@ static void CALLBACK probe_spu_schedule(unsigned int cycles){
 #include "plugins.h"
 #include "gpu/gpulib/gpu.h"
 #include "../disc_preflight.h"
+#include "../disc_load.h"
 PSP_MODULE_INFO("PCSX4ALL integrated",0,1,0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
 extern "C" int revival_pcsx4all_probe_one(void);
@@ -570,6 +571,41 @@ static void disc_boot_test(){
         &&psxMu32(start)==0x24014e20u;
     mark("Disc HLE bootstrap",loaded);
     if(loaded){
+        // Same private synthetic fixture, now through the new independent
+        // reader. Compare before replacing the original HLE payload.
+        rv_load_staged staged={};
+        FILE *f=fopen("REVIVAL_BOOT.bin","rb");
+        int rc=f?rv_load_stage(f,&staged):RV_PF_IO;
+        if(f&&fclose(f))rc=RV_PF_IO;
+        bool staged_ok=rc==RV_PF_OK&&staged.payload_bytes==2048
+            &&staged.meta.text_addr==start&&staged.meta.pc==start
+            &&!memcmp(staged.payload,data(24),2048);
+        mark("Disc transactional stage",staged_ok);
+        bool parity=staged_ok&&staged.meta.pc==psxRegs.pc
+            &&staged.meta.gp==psxRegs.GPR.n.gp&&staged.meta.sp==psxRegs.GPR.n.sp
+            &&!memcmp(staged.payload,psxM+0x10000,2048);
+        mark("Disc HLE loader parity",parity);
+        rv_pf_result committed={};
+        bool committed_ok=false;
+        if(parity){
+            // Preserve adjacent RAM words; host tests independently verify
+            // write into sentinel-filled RAM and failure without mutation.
+            const u32 left=psxMu32(0xfffc),right=psxMu32(0x10800);
+            rc=rv_load_commit(&staged,(unsigned char *)psxM,0x200000,&committed);
+            if(rc==RV_PF_OK){
+                psxCpu->Clear(committed.text_addr,committed.text_bytes/4);
+                psxRegs.pc=committed.pc;
+                psxRegs.GPR.n.gp=committed.gp;
+                psxRegs.GPR.n.sp=committed.sp;
+                committed_ok=!memcmp(psxM+0x10000,data(24),2048)
+                    &&psxMu32(0xfffc)==left&&psxMu32(0x10800)==right;
+            }
+        }
+        mark("Disc transactional RAM commit",committed_ok);
+        rv_load_discard(&staged);
+        // Keep baseline synthetic HLE execution available on admission
+        // failure; no external guest code is ever selected.
+
         unsigned blocks=0;bool loop_ok=false;
         while(psxRegs.pc!=0x80010070u && blocks<20010){
             if(psxRegs.pc==0x80010040u)loop_ok=psxRegs.GPR.r[1]==0&&psxRegs.GPR.r[2]==20000&&psxRegs.GPR.r[3]==20000;
