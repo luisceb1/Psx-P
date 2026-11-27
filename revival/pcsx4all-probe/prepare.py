@@ -85,7 +85,9 @@ with p.open("a") as out:
     out.write("""
 extern "C" int revival_pcsx4all_probe_one(void)
 {
-    if (psxRegs.pc != 0x80010000u || psxRegs.cycle >= psxRegs.io_cycle_counter)
+    if ((psxRegs.pc != 0x80010000u && psxRegs.pc != 0x80010004u &&
+         psxRegs.pc != 0x80010014u) ||
+        psxRegs.cycle >= psxRegs.io_cycle_counter)
         return 0;
     block_ret_addr = block_fast_ret_addr = 0;
     u32 *entry = (u32*)PC_REC(psxRegs.pc);
