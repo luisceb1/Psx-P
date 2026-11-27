@@ -20,6 +20,13 @@
 #ifndef _SIO_H_
 #define _SIO_H_
 
+/* sioFreeze exposes gzFile: include its declaration before use. */
+#if defined(__DREAMCAST__)
+#include <zlib/zlib.h>
+#else
+#include <zlib.h>
+#endif
+
 #define MCD_SIZE	(1024 * 8 * 16)
 
 // Status Flags
