@@ -46,3 +46,25 @@ jobs:
             pcsx4all-adaptation.diff
             gu-probe.log
           if-no-files-found: warn
+  abi-and-isa-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Link independent synthetic ABI test and inspect instruction encodings
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull pspdev/pspdev:latest
+          docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest > abi-isa.log
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD:/logs" pspdev/pspdev:latest sh -ec 'cp -R /src/revival/pcsx4all-probe /tmp/probe; cd /tmp/probe/abi-test; make; test -s EBOOT.PBP; sha256sum EBOOT.PBP; psp-gcc -G0 -c ../isa_probe.S -o /tmp/isa.o; psp-objdump -dr /tmp/isa.o; psp-objcopy -O binary -j .text /tmp/isa.o /logs/isa-text.bin' 2>&1 | tee -a abi-isa.log
+          python3 revival/pcsx4all-probe/check_isa.py isa-text.bin | tee -a abi-isa.log
+          rm -f isa-text.bin
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: abi-isa-diagnostics
+          path: abi-isa.log
+          if-no-files-found: warn
