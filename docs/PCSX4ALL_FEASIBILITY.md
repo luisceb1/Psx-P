@@ -20,3 +20,7 @@ Upstream https://github.com/dmitrysmagin/pcsx4all/tree/c7faf12b893eba94faced88ba
 3. Link a minimal PSP platform port; measure memory, use isolated blank storage and retain fallback interpreter. Only then consider physical testing.
 4. Add disc and frontend adapters, GPU and SPU. Benchmark fixed workloads with guest frame/event counts and elapsed wall time. Compare against original fastcore separately.
 5. Consider GU rasterization or VFPU only after identifying bottleneck. Do not change original BIAS/VSync or merge experimental code prematurely.
+
+## First cross-compile result — 2026-11-27
+
+CI 45988677116: GCC 15.2.0 compiled 8/9 core translation units: r3000a, psxinterpreter, psxevents, psxcounters, psxmem, gte, mips_codegen and mem_mapping. The full recompiler and GU probe failed because standalone compiler calls lacked the SDK include directory (pspkernel.h / pspgu.h not found). This is a build configuration failure, not evidence that the full backend is compatible. Add explicit SDK include path from psp-config and header existence checks. On successful compilation, combine the objects using a relocatable link and report unresolved external symbols to scope the next platform/core integration. Relocatable output is not an executable and is not uploaded. No hardware test.

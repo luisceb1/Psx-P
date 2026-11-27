@@ -7,7 +7,9 @@ out="$2"
 mkdir -p "$out"
 cd "$root"
 psp-g++ --version
-psp-config --pspsdk-path
+sdk=$(psp-config --pspsdk-path)
+printf "PSPSDK=%s\n" "$sdk"
+test -f "$sdk/include/pspkernel.h"
 failed=0
 for unit in r3000a psxinterpreter psxevents psxcounters psxmem gte recompiler/mips/mips_codegen recompiler/mips/mem_mapping recompiler/mips/recompiler; do
     name=$(echo "$unit" | tr / _)
@@ -15,7 +17,7 @@ for unit in r3000a psxinterpreter psxevents psxcounters psxmem gte recompiler/mi
     if psp-g++ -std=gnu++11 -O2 -G0 -fno-rtti -fno-strict-aliasing \
         -D__PSP__ -DPSXREC -DREVIVAL_PSP_PROBE \
         -D'INLINE=static __inline__' -D'asm=__asm__ __volatile__' \
-        -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
+        -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
         -Isrc/gpu/gpu_unai -Isrc/spu/spu_pcsxrearmed \
         -Dgpu_unai -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
         -c "src/$unit.cpp" -o "$out/$name.o"; then
@@ -26,4 +28,11 @@ for unit in r3000a psxinterpreter psxevents psxcounters psxmem gte recompiler/mi
         failed=1
     fi
 done
+if [ "$failed" -eq 0 ]; then
+    echo "=== Relocatable core link (not executable) ==="
+    psp-g++ -r -nostdlib "$out"/*.o -o "$out/core-relocatable.o"
+    psp-size "$out/core-relocatable.o"
+    echo "=== Remaining external symbols ==="
+    psp-nm -u -C "$out/core-relocatable.o"
+fi
 exit "$failed"
