@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <pspkernel.h>
 #include <pspdebug.h>
+#include <pspctrl.h>
 #include <stdio.h>
 #include <string.h>
 #include "r3000a.h"
 #include "psxevents.h"
+#include "psxcounters.h"
 #include "psxdma.h"
 #ifdef REVIVAL_SPU_INTEGRATION
 extern "C" {
@@ -272,6 +274,124 @@ static void dma4_test(){
         && !memcmp(psxM+dst,b,sizeof(b)) && psxMu32(dst-4)==0x5a5a5a5au
         && psxMu32(dst+sizeof(b))==0x5a5a5a5au);
 }
+// Bounded cooperative runner: host-defined, trusted fixture only.
+// A return to the frontend is guaranteed between dispatches, not if a
+// generated block or an upstream event handler itself fails to return.
+extern "C" int revival_pcsx4all_probe_region_one(u32 begin,u32 end);
+enum RunStop { RUN_TARGET, RUN_YIELD, RUN_REJECT, RUN_TIMEOUT, RUN_CANCEL, RUN_LIMIT };
+static const char *run_name(RunStop s){
+    switch(s){
+        case RUN_TARGET:return "target";
+        case RUN_YIELD:return "yield";
+        case RUN_REJECT:return "rejected";
+        case RUN_TIMEOUT:return "timeout";
+        case RUN_CANCEL:return "cancel";
+        case RUN_LIMIT:return "limit";
+    }
+    return "unknown";
+}
+static bool cancel_pressed(){
+    SceCtrlData pad={};
+    return sceCtrlPeekBufferPositive(&pad,1)>0 &&
+        (pad.Buttons&(PSP_CTRL_START|PSP_CTRL_SELECT))==(PSP_CTRL_START|PSP_CTRL_SELECT);
+}
+struct RunResult { RunStop stop; bool yielded; u32 pc,cycle,gpr[32],frames,dispatches,slices; u64 us; };
+static RunStop run_slice(bool native,u32 begin,u32 end,unsigned budget,unsigned &count){
+    for(unsigned i=0;i<budget;i++){
+        if(psxRegs.pc==end)return RUN_TARGET;
+        if(psxRegs.cycle>=psxRegs.io_cycle_counter)psxBranchTest();
+        if(psxRegs.pc==end)return RUN_TARGET;
+        if((psxRegs.pc&3u)||psxRegs.pc<begin||psxRegs.pc>=end)return RUN_REJECT;
+        if(native){
+            if(!revival_pcsx4all_probe_region_one(begin,end))return RUN_REJECT;
+        }else execI();
+        count++;
+    }
+    return psxRegs.pc==end?RUN_TARGET:RUN_YIELD;
+}
+static const u32 run_base=0x80024000u,run_end=0x80024020u;
+static const unsigned run_iterations=500000;
+static const u32 run_program[]={
+    0x3c010007,0x3421a120, // r1 = 500000
+    0x24420001,           // r2++
+    0x2421ffff,           // r1--
+    0x1420fffd,           // bne r1,zero,run_base+8
+    0x24630001,           // r3++ in delay slot
+    0x08009008,0          // jump to run_end
+};
+static void run_setup(bool native){
+    Config.HLE=TRUE;Config.Cpu=native?CPU_DYNAREC:CPU_INTERPRETER;
+    psxCpu=native?&psxRec:&psxInt;
+    psxReset();
+    // Allow event delivery but prevent the synthetic program from taking
+    // guest hardware exceptions; guest code has no IRQ handler.
+    psxMemWrite32(0x1f801074,0);
+    psxMemWrite32(0x1f801070,0);
+    // Known padding for upstream compiler lookahead.
+    memset(psxM+0x24000,0,4096);
+    memcpy(psxM+0x24000,run_program,sizeof(run_program));
+    psxRegs.pc=run_base;
+}
+static RunResult run_fixture(bool native){
+    run_setup(native);
+    RunResult r={};
+    const u32 initial_frames=frame_counter;
+    const u64 initial=sceKernelGetSystemTimeWide();
+    r.stop=RUN_LIMIT;
+    const unsigned slice_budget=1024;
+    const unsigned dispatch_limit=1600008;
+    while(r.dispatches<dispatch_limit){
+        if(cancel_pressed()){r.stop=RUN_CANCEL;break;}
+        if(sceKernelGetSystemTimeWide()-initial>=15000000ULL){r.stop=RUN_TIMEOUT;break;}
+        unsigned budget=dispatch_limit-r.dispatches;
+        if(budget>slice_budget)budget=slice_budget;
+        r.stop=run_slice(native,run_base,run_end,budget,r.dispatches);
+        r.slices++;
+        if(r.stop!=RUN_YIELD)break;
+        r.yielded=true;
+        // Yield the PSP thread between bounded slices, not guest timing.
+        sceKernelDelayThread(1);
+    }
+    if(r.stop==RUN_YIELD)r.stop=RUN_LIMIT;
+    r.us=sceKernelGetSystemTimeWide()-initial;
+    r.pc=psxRegs.pc;r.cycle=psxRegs.cycle;
+    r.frames=frame_counter-initial_frames;
+    memcpy(r.gpr,psxRegs.GPR.r,sizeof(r.gpr));
+    return r;
+}
+static bool run_expected(const RunResult &r){
+    return r.stop==RUN_TARGET&&r.pc==run_end&&r.gpr[0]==0&&r.gpr[1]==0
+        &&r.gpr[2]==run_iterations&&r.gpr[3]==run_iterations;
+}
+static void log_run(const char *engine,const RunResult &r){
+    if(report){
+        fprintf(report,"Runner %s,%s,pc=%08lx,cycles=%lu,frames=%lu,dispatches=%lu,slices=%lu,us=%llu\n",
+            engine,run_name(r.stop),(unsigned long)r.pc,(unsigned long)r.cycle,
+            (unsigned long)r.frames,(unsigned long)r.dispatches,(unsigned long)r.slices,
+            (unsigned long long)r.us);
+        fflush(report);
+    }
+}
+static void runner_test(){
+    // Verify rejection without executing or modifying the guest registers.
+    run_setup(true);
+    u32 old_pc=psxRegs.pc,old_cycle=psxRegs.cycle;
+    bool range_ok=!revival_pcsx4all_probe_region_one(run_base+4,run_end)
+        &&!revival_pcsx4all_probe_region_one(run_base+1,run_end)
+        &&!revival_pcsx4all_probe_region_one(run_end,run_base)
+        &&psxRegs.pc==old_pc&&psxRegs.cycle==old_cycle;
+    mark("Runner range rejection",range_ok);
+    RunResult a=run_fixture(false);log_run("interpreter",a);
+    mark("Runner interpreter completion",run_expected(a));
+    mark("Runner interpreter slice resume",a.yielded&&a.slices>1&&run_expected(a));
+    RunResult b=run_fixture(true);log_run("dynarec",b);
+    mark("Runner relocated dynarec completion",run_expected(b));
+    mark("Runner dynarec slice resume",b.yielded&&b.slices>1&&run_expected(b));
+    mark("Runner register cycle parity",run_expected(a)&&run_expected(b)&&a.cycle==b.cycle
+        &&!memcmp(a.gpr,b.gpr,sizeof(a.gpr)));
+    mark("Runner scheduled frames",run_expected(a)&&run_expected(b)&&a.frames>0&&a.frames==b.frames);
+    Config.HLE=FALSE;
+}
 static bool fresh_disc=false;
 static bool cd_ack(unsigned expected){
     psxMemWrite8(0x1f801800,1);
@@ -445,6 +565,8 @@ int main(){
     if(report){fprintf(report,"DMA extension begin\n");fflush(report);}
     dma4_test();
     dma3_test();
+    if(report){fprintf(report,"Runner extension begin\n");fflush(report);}
+    runner_test();
     SPUclose();SPUshutdown();
 #endif
     if(report)fclose(report);

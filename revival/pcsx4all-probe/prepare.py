@@ -83,11 +83,10 @@ h.write_text(header)
 # No use of the unbounded production ExecuteBlock loop.
 with p.open("a") as out:
     out.write("""
-extern "C" int revival_pcsx4all_probe_one(void)
+static int revival_probe_dispatch(void)
 {
-    if ((psxRegs.pc != 0x80010000u && psxRegs.pc != 0x80010004u &&
-         psxRegs.pc != 0x80010014u && psxRegs.pc != 0x80010040u) ||
-        psxRegs.cycle >= psxRegs.io_cycle_counter)
+    if (psxRegs.cycle >= psxRegs.io_cycle_counter ||
+        (psxRegs.pc & 3u) || !psxRecLUT[psxRegs.pc >> 16])
         return 0;
     block_ret_addr = block_fast_ret_addr = 0;
     u32 *entry = (u32*)PC_REC(psxRegs.pc);
@@ -97,6 +96,27 @@ extern "C" int revival_pcsx4all_probe_one(void)
         return 0;
     recFunc((void*)(uptr)*entry);
     return 1;
+}
+
+// Preserve original probes and their explicit PC allowlist.
+extern "C" int revival_pcsx4all_probe_one(void)
+{
+    if (psxRegs.pc != 0x80010000u && psxRegs.pc != 0x80010004u &&
+        psxRegs.pc != 0x80010014u && psxRegs.pc != 0x80010040u)
+        return 0;
+    return revival_probe_dispatch();
+}
+
+// Relocatable, host-created synthetic RAM regions only. This validates the
+// dispatch entry, not every opcode or recompiler lookahead. Do not expose
+// this API to external executables or untrusted guest code.
+extern "C" int revival_pcsx4all_probe_region_one(u32 begin, u32 end)
+{
+    if ((begin | end | psxRegs.pc) & 3u ||
+        begin < 0x80000000u || end > 0x80200000u || begin >= end ||
+        psxRegs.pc < begin || psxRegs.pc >= end)
+        return 0;
+    return revival_probe_dispatch();
 }
 """)
 
