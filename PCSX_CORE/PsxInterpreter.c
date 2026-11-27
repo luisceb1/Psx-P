@@ -19,6 +19,12 @@
 #include <stdlib.h>
 
 #include "PsxCommon.h"
+#ifdef __PSP__
+#include <pspkernel.h>
+#include "jit_cache.h"
+#include "jit_shadow.h"
+#include "log.h"
+#endif
 
 // Interpreter Fixed for psp by yoshihihro ^_^ Good result at Toshinden texture it's back like under windows 
 // Fixed psx Cycle
@@ -806,11 +812,74 @@ static int intInit() {
 	return 0;
 }
 
+#ifdef __PSP__
+static struct revival_jit_cache shadow_cache;
+static unsigned int shadow_attempts, shadow_blocks, shadow_words, shadow_mismatch;
+int revival_jit_shadow_enabled;
+static int intJitShadow(void) {
+    uint32_t pc=(uint32_t)psxRegs.pc, phys=pc&0x1fffffffu;
+    uint32_t before[32], expected[32];
+    const uint32_t *live;
+    const struct revival_jit_slot *slot;
+    unsigned int j, n;
+    uint32_t cycle;
+    int fresh;
+    void (*run)(uint32_t *);
+#ifdef PSXCPU_LOG
+    if(Log) return 0;
+#endif
+    /* Only normal RAM aliases; never BIOS, IO, scratchpad or branch-delay paths.
+     * Sample one of every 64 eligible top-level dispatches to bound overhead. */
+    if(branch || (pc&3u) || phys>=0x800000u ||
+       !(pc<0x800000u || (pc>=0x80000000u && pc<0x80800000u) ||
+         (pc>=0xa0000000u && pc<0xa0800000u)) || psxRegs.GPR.r[0]) return 0;
+    if((++shadow_attempts&63u)!=0) return 0;
+    live=(const uint32_t *)PSXM(pc);
+    if(!live) return 0;
+    slot=revival_jit_lookup(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh);
+    if(!slot) return 0;
+    n=slot->guest_count;
+    memcpy(before,psxRegs.GPR.r,sizeof(before));
+    memcpy(expected,before,sizeof(expected));
+    if(fresh) {
+        sceKernelDcacheWritebackInvalidateRange((void *)slot->code,slot->code_count*4u);
+        sceKernelIcacheInvalidateRange((void *)slot->code,slot->code_count*4u);
+    }
+    run=(void (*)(uint32_t *))(uintptr_t)slot->code;
+    run(expected); /* only scratch GPRs; interpreter remains authoritative */
+    cycle=psxRegs.cycle;
+    for(j=0;j<n;j++) execI();
+    ++shadow_blocks;shadow_words+=n;
+    if(memcmp(expected,psxRegs.GPR.r,sizeof(expected)) ||
+       psxRegs.pc!=pc+4u*n || psxRegs.cycle!=cycle ||
+       psxRegs.code!=slot->guest[n-1]) {
+        ++shadow_mismatch;
+        revival_jit_shadow_enabled=0;
+        DLog("JIT shadow mismatch at %08lx; disabled",(unsigned long)pc);
+    }
+    return 1; /* interpreter already executed this block */
+}
+void revival_jit_shadow_snapshot(FILE *f) {
+    fprintf(f,",%u,%u,%u,%u,%u,%u,%u,%u",shadow_attempts,shadow_blocks,
+        shadow_words,shadow_mismatch,shadow_cache.hits,shadow_cache.misses,
+        shadow_cache.changed,shadow_cache.rejected);
+}
+#endif
+
 static void intReset() {
+#ifdef __PSP__
+    revival_jit_cache_reset(&shadow_cache);
+    shadow_attempts=shadow_blocks=shadow_words=shadow_mismatch=0;
+#endif
 }
 
 static void intExecute() {
-	for (;;) execI();
+    for (;;) {
+#ifdef __PSP__
+        if(revival_jit_shadow_enabled && intJitShadow()) continue;
+#endif
+        execI();
+    }
 }
 
 static void intExecuteBlock() {

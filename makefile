@@ -41,7 +41,9 @@ PSP/log.o \
 PSP/vram.o \
 revival/storage.o \
 revival/perf.o \
-revival/present.o
+revival/present.o \
+revival/jit_emit.o \
+revival/jit_cache.o
 
 
 #PSX_PEOPS_SPU/cfg.o \

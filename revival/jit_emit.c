@@ -11,6 +11,18 @@ static uint32_t i(unsigned op,unsigned rs,unsigned rt,unsigned imm) {
 static uint32_t load(unsigned host,unsigned guest) {
     return guest ? i(0x23,A0,host,guest*4u) : r(0,0,host,0,0x21);
 }
+int revival_jit_supported(uint32_t w) {
+    unsigned op=w>>26, rs=(w>>21)&31u, sa=(w>>6)&31u, fn=w&63u;
+    if(!op) {
+        switch(fn) {
+        case 0:case 2:case 3:return !rs;
+        case 4:case 6:case 7:case 0x21:case 0x23:case 0x24:
+        case 0x25:case 0x26:case 0x27:case 0x2a:case 0x2b:return !sa;
+        default:return 0;
+        }
+    }
+    return (op>=9 && op<=14) || (op==15 && !rs);
+}
 size_t revival_jit_emit(const uint32_t *guest,size_t n,uint32_t *out,size_t cap) {
     uint32_t tmp[REVIVAL_JIT_MAX_WORDS];
     size_t j,k=0;

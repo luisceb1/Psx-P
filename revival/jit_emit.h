@@ -10,5 +10,6 @@
  * No external calls, guest memory accesses, cycle or interrupt handling.
  * The caller is responsible for executable memory and D/I cache coherency.
  */
+int revival_jit_supported(uint32_t word);
 size_t revival_jit_emit(const uint32_t *guest,size_t n,uint32_t *out,size_t cap);
 #endif

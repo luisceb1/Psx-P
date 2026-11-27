@@ -10,5 +10,7 @@ test:
 	./timer_policy_test
 	$(CC) $(CFLAGS) -I. jit_emit.c tests/jit_emit_test.c -o jit_emit_test
 	./jit_emit_test
+	$(CC) $(CFLAGS) -I. jit_emit.c jit_cache.c tests/jit_cache_test.c -o jit_cache_test
+	./jit_cache_test
 clean:
-	rm -f storage_test present_test timer_policy_test jit_emit_test
+	rm -f storage_test present_test timer_policy_test jit_emit_test jit_cache_test

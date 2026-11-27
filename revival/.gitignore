@@ -5,3 +5,5 @@ present_test
 timer_policy_test
 
 jit_emit_test
+
+jit_cache_test
