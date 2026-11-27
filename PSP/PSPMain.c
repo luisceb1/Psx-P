@@ -32,7 +32,7 @@
 #include <stdarg.h> 
 #include <errno.h>
 #include <string.h>
-#include "psxcommon.h"
+#include "PsxCommon.h"
 #include "zlib.h"
 #include <png.h>
 #include "Sio.h"
