@@ -64,7 +64,12 @@ R0(unsigned char,cdrRead0) R0(unsigned char,cdrRead1)
 R0(unsigned char,cdrRead2) R0(unsigned char,cdrRead3)
 V1(cdrWrite0,unsigned char) V1(cdrWrite1,unsigned char)
 V1(cdrWrite2,unsigned char) V1(cdrWrite3,unsigned char)
+#ifndef REVIVAL_GPU_INTEGRATION
 V0(gpuInterrupt) V0(spuInterrupt) V0(gpuotcInterrupt)
+#else
+void CALLBACK SPUwriteDMAMem(unsigned short*,int,unsigned int){STOP;}
+void CALLBACK SPUreadDMAMem(unsigned short*,int,unsigned int){STOP;}
+#endif
 V0(mdec0Interrupt) V0(mdec1Interrupt)
 V1(mdecWrite0,u32) V1(mdecWrite1,u32)
 R0(u32,mdecRead0) R0(u32,mdecRead1)

@@ -5,9 +5,10 @@
 #include <string.h>
 #include "r3000a.h"
 #include "psxevents.h"
+#include "psxdma.h"
 #include "plugins.h"
 #include "gpu/gpulib/gpu.h"
-PSP_MODULE_INFO("PCSX4ALL integration probe",0,1,0);
+PSP_MODULE_INFO("PCSX4ALL integrated",0,1,0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
 extern "C" int revival_pcsx4all_probe_one(void);
 extern void execI(void);
@@ -50,6 +51,26 @@ static bool pixels(){
     return gpu.vram[0]==0x001f && gpu.vram[239*1024+255]==0x001f &&
         gpu.vram[256]==0 && gpu.vram[240*1024]==0;
 }
+static void dma_test(){
+    // Known, bounded RAM packet; no guest DMA register decoder yet.
+    setup(&psxRec);
+    psxEvqueueInit();
+    const u32 addr=0x20000;
+    const u32 packet[]={0x0200ff00,0x00000000,0x00020100,0x00000000};
+    memcpy(psxM+addr,packet,sizeof(packet));
+    HW_DMA2_MADR=addr;HW_DMA2_BCR=0x00010004;HW_DMA2_CHCR=0x01000201;
+    HW_DMA_ICR=(1u<<18)|(1u<<23);
+    psxDma2(addr,0x00010004,0x01000201);
+    GPU_updateLace();
+    mark("DMA2 RAM to VRAM",gpu.vram[0]==0x03e0 && gpu.vram[1024+255]==0x03e0 && gpu.vram[2*1024]==0 && HW_DMA2_MADR==addr+16);
+    bool queued=(psxRegs.interrupt & (1u<<PSXINT_GPUDMA))!=0;
+    mark("DMA2 event queued",queued);
+    if(queued){
+        psxRegs.cycle=psxRegs.intCycle[PSXINT_GPUDMA].sCycle+psxRegs.intCycle[PSXINT_GPUDMA].cycle;
+        psxBranchTest();
+        mark("DMA2 completion IRQ",!(HW_DMA2_CHCR&0x01000000u) && !(psxRegs.interrupt&(1u<<PSXINT_GPUDMA)) && (psxHu32(0x1070)&8u));
+    }
+}
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
@@ -70,6 +91,7 @@ int main(){
     bool b=dispatched&&psxRegs.pc==end_pc&&pixels();
     mark("Dynarec GP0",b);
     mark("GPR and cycles",a&&b&&cycles==psxRegs.cycle&&!memcmp(regs,psxRegs.GPR.r,sizeof(regs)));
+    dma_test();
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);
     if(report)fclose(report);
