@@ -48,3 +48,16 @@ done
 make -C "$out" -f /revival/revival/pcsx4all-probe/integration-test/Makefile
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Separate data-only CD image reader and compile-only controller units.
+out=$(dirname "$out")/cd-test
+mkdir -p "$out"
+echo "=== CD image reader and controller compile probe ==="
+compile src/cdriso.cpp cd_iso
+compile src/ppf.cpp cd_ppf
+compile src/cdrom.cpp cd_controller
+compile src/decode_xa.cpp cd_xa
+compile /revival/revival/pcsx4all-probe/cd-test/cd_main.cpp cd_main
+make -C "$out" -f /revival/revival/pcsx4all-probe/cd-test/Makefile
+test -s "$out/EBOOT.PBP"
+sha256sum "$out/EBOOT.PBP"

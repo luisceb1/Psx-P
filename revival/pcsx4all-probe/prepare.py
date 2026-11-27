@@ -110,3 +110,15 @@ for old, new in (("unsigned int *list,", "uint32_t *list,"),
         raise SystemExit("Unexpected GPU command declaration: " + old)
     g = g.replace(old, new, 1)
 gpu_if.write_text(g)
+
+# First CD data-only probe: no POSIX audio thread or CDDA playback.
+iso = root / "src/cdriso.cpp"
+s = iso.read_text()
+s = s.replace("#include <pthread.h>", "/* CDDA disabled for PSP data-only probe */", 1)
+s = s.replace("static pthread_t threadid;", "/* no CDDA thread */", 1)
+a = s.index("#ifdef _WIN32\nstatic void playthread(")
+b = s.index("// this function tries to get the .toc", a)
+s = s[:a] + """static void stopCDDA() { playing = FALSE; }
+static void startCDDA() { playing = FALSE; }
+\n""" + s[b:]
+iso.write_text(s)
