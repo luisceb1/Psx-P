@@ -52,7 +52,7 @@ jobs:
           git rev-parse HEAD > source-sdl.log
           docker pull pspdev/pspdev:latest >> source-sdl.log 2>&1
           docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest >> source-sdl.log
-          docker run --rm -v "$PWD:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; apk add --no-cache autoconf automake libtool build-base; sh revival/build-source-sdl.sh; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0; test -s EBOOT.PBP; psp-nm PSXP.elf > source-sdl-symbols.txt; sha256sum EBOOT.PBP; make -f makefile clean; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0 REVIVAL_OPT=-O2; test -s EBOOT.PBP; sha256sum EBOOT.PBP' 2>&1 | tee -a source-sdl.log
+          docker run --rm -v "$PWD:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; apk add --no-cache autoconf automake libtool build-base; sh revival/build-source-sdl.sh; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0; test -s EBOOT.PBP; psp-nm PSXP.elf > source-sdl-symbols.txt; sha256sum EBOOT.PBP; make -f makefile clean; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0 REVIVAL_OPT=-O2; test -s EBOOT.PBP; sha256sum EBOOT.PBP; make -f makefile clean; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0 REVIVAL_OPT=-O2 REVIVAL_AUDIO=peops; test -s EBOOT.PBP; sha256sum EBOOT.PBP' 2>&1 | tee -a source-sdl.log
       - name: Upload source build diagnostics
         if: always()
         uses: actions/upload-artifact@v4

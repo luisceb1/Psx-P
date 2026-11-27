@@ -8,5 +8,7 @@ test:
 	./present_test
 	$(CC) $(CFLAGS) -I. tests/timer_policy_test.c -o timer_policy_test
 	./timer_policy_test
+	$(CC) $(CFLAGS) -I. tests/pcm_queue_test.c -o pcm_queue_test
+	./pcm_queue_test
 clean:
-	rm -f storage_test present_test timer_policy_test
+	rm -f storage_test present_test timer_policy_test pcm_queue_test

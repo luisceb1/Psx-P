@@ -72,6 +72,7 @@ void CALLBACK SPU_d_writeRegister(unsigned long reg, unsigned short val)
 {
  const unsigned long r=reg&0xfff;
 
+ if(r<0xc00 || r>=0xe00 || (r&1)) return;
  regArea[(r-0xc00)>>1] = val;
 
  if(r>=0x0c00 && r<0x0d80)                             // some channel info?
@@ -204,7 +205,7 @@ void CALLBACK SPU_d_writeRegister(unsigned long reg, unsigned short val)
       break;
     //-------------------------------------------------//
     case H_SPUdata:
-      spuMem[spuAddr>>1] = val;
+      spuMem[(spuAddr&0x7ffff)>>1] = val;
       spuAddr+=2;
       if(spuAddr>0x7ffff) spuAddr=0;
       break;
@@ -378,6 +379,7 @@ unsigned short CALLBACK SPU_d_readRegister(unsigned long reg)
  const unsigned long r=reg&0xfff;
 
  iSpuAsyncWait=0;
+ if(r<0xc00 || r>=0xe00 || (r&1)) return 0;
 
  if(r>=0x0c00 && r<0x0d80)
   {
@@ -416,7 +418,7 @@ unsigned short CALLBACK SPU_d_readRegister(unsigned long reg)
 
     case H_SPUdata:
      {
-      unsigned short s=spuMem[spuAddr>>1];
+      unsigned short s=spuMem[(spuAddr&0x7ffff)>>1];
       spuAddr+=2;
       if(spuAddr>0x7ffff) spuAddr=0;
       return s;

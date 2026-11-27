@@ -31,7 +31,7 @@ GPU_SOFT_SDL/menu.o \
 GPU_SOFT_SDL/prim.o \
 GPU_SOFT_SDL/soft.o \
 GPU_SOFT_SDL/zn.o \
-PSX_SPU_NULL/PlugSPU.o \
+$(REVIVAL_SPU_OBJS) \
 PSP/PSPMain.o \
 PSP/plugins.o \
 PSP/Plugin.o \
@@ -43,6 +43,16 @@ revival/storage.o \
 revival/perf.o \
 revival/present.o
 
+
+REVIVAL_AUDIO ?= null
+ifeq ($(REVIVAL_AUDIO),peops)
+REVIVAL_SPU_OBJS = PSX_PEOPS_SPU/spu.o PSX_PEOPS_SPU/dma.o PSX_PEOPS_SPU/registers.o PSX_PEOPS_SPU/psemu.o PSX_PEOPS_SPU/Pspsound.o
+REVIVAL_AUDIO_FLAGS = -DREVIVAL_PEOPS_AUDIO -DNOTHREADLIB -fno-strict-aliasing
+else ifeq ($(REVIVAL_AUDIO),null)
+REVIVAL_SPU_OBJS = PSX_SPU_NULL/PlugSPU.o
+else
+$(error REVIVAL_AUDIO must be null or peops)
+endif
 
 #PSX_PEOPS_SPU/cfg.o \
 #PSX_PEOPS_SPU/spu.o \
@@ -74,7 +84,7 @@ REVIVAL_OPT_LEVEL = 1
 else
 $(error REVIVAL_OPT must be -Os or -O2)
 endif
-CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LEVEL=$(REVIVAL_OPT_LEVEL) -fsingle-precision-constant -funswitch-loops -fbranch-target-load-optimize2 -D__PSP__ -D_SDL
+CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LEVEL=$(REVIVAL_OPT_LEVEL) $(REVIVAL_AUDIO_FLAGS) -fsingle-precision-constant -funswitch-loops -fbranch-target-load-optimize2 -D__PSP__ -D_SDL
 #-D_SDL2  
 
 #-D_OPENGL
@@ -95,7 +105,7 @@ LIBS = $(SDL_MIXER_LIB) $(SDL_PREFIX)/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSX-P Revival 0.0.9 perf test
+PSP_EBOOT_TITLE = PSX-P Revival 0.0.10 perf test
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak

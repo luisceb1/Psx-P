@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include "perf.h"
 #include "boottrace.h"
+#ifdef REVIVAL_PEOPS_AUDIO
+#include "audio_backend.h"
+#endif
 
 int revival_perf_mode = REVIVAL_PERF_LEGACY;
 int revival_perf_native;
@@ -62,7 +65,7 @@ void revival_perf_init(void) {
 void revival_perf_begin(void) {
     FILE *f = fopen("PERF.CSV", "wb");
     if (!f) return;
-    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls,compiler_opt");
+    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls,compiler_opt,audio_produced,audio_consumed,audio_silent,audio_dropped,audio_nonzero");
     revival_boot_header(f);
     fclose(f);
     samples = laces = vblanks = last_cycle = draw_phase = 0;
@@ -119,6 +122,11 @@ void revival_perf_lace(unsigned int cycle) {
             (unsigned long long)component_us[1], component_calls[1],
             (unsigned long long)component_us[2], component_calls[2]);
     fprintf(f, ",%s", REVIVAL_OPT_LABEL);
+#ifdef REVIVAL_PEOPS_AUDIO
+    revival_audio_snapshot(f);
+#else
+    fprintf(f,",0,0,0,0,0");
+#endif
     revival_boot_snapshot(f);
     fclose(f);
     last_cycle = cycle;
