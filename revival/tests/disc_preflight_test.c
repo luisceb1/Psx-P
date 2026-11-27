@@ -64,6 +64,64 @@ static int image(size_t bytes,rv_pf_result *r){
     FILE *f=tmpfile();assert(f);assert(fwrite(disc,1,bytes,f)==bytes);rewind(f);
     int rc=rv_pf_bin(f,r);fclose(f);return rc;
 }
+static void named_fixture(const char *cnf){
+    fixture();
+    memset(payload(20),0,2048);memset(payload(21),0,2048);
+    unsigned char *p=payload(20);unsigned off=0;
+    off+=entry(p+off,20,4096,2,"\0",1);
+    off+=entry(p+off,20,4096,2,"\1",1);
+    off+=entry(p+off,22,(unsigned)strlen(cnf),0,"SYSTEM.CNF;1",12);
+    entry(p+off,26,4096,0,"PSX.EXE;1",9);
+    memcpy(payload(26),payload(23),2048);memcpy(payload(27),payload(24),2048);
+    /* Named executable lives in the second root directory sector. */
+    const char name[]="DEMO_001.23;1";
+    entry(payload(21),23,4096,0,name,sizeof(name)-1);
+    memset(payload(22),0,2048);memcpy(payload(22),cnf,strlen(cnf));
+}
+static void boot_volume_variants(void){
+    const char *cases[]={
+        "BOOT = cdrom:\\DEMO_001.23;1\r\n",
+        "boot = CDROM:\\demo_001.23\r\n",
+        "TCB = 4\nEVENT = 16\nBOOT=cdrom:/DEMO_001.23\n",
+        "BOOT\t=\tcdrom:DEMO_001.23"
+    };
+    rv_pf_result r;
+    for(size_t i=0;i<sizeof(cases)/sizeof(cases[0]);i++){
+        named_fixture(cases[i]);
+        assert(image(sizeof(disc),&r)==RV_PF_OK);
+        assert(!strcmp(r.boot_name,"DEMO_001.23;1")&&r.exe_lba==23);
+        assert(r.sectors==32&&r.volume_sectors==32);
+    }
+    rv_pf_result saved=r;
+    named_fixture("BOOT = cdrom:\\MISSING.EXE\n");
+    assert(image(sizeof(disc),&r)==RV_PF_BOOT&&!memcmp(&r,&saved,sizeof(r)));
+    named_fixture("BOOT = cdrom:\\DEMO_001.23;2\n");
+    assert(image(sizeof(disc),&r)==RV_PF_BOOT&&!memcmp(&r,&saved,sizeof(r)));
+    named_fixture("BOOT = cdrom:\\DIR\\DEMO_001.23\n");
+    assert(image(sizeof(disc),&r)==RV_PF_BOOT&&!memcmp(&r,&saved,sizeof(r)));
+    fixture();
+    memset(payload(20),0,2048);
+    unsigned char *root=payload(20);unsigned off=0;
+    off+=entry(root+off,20,4096,2,"\0",1);
+    off+=entry(root+off,20,4096,2,"\1",1);
+    entry(root+off,23,4096,0,"PSX.EXE;1",9);
+    assert(image(sizeof(disc),&r)==RV_PF_OK&&!strcmp(r.boot_name,"PSX.EXE;1"));
+    named_fixture(cases[1]);
+    both32(payload(16)+80,30);
+    /* Extra physical sectors are outside the ISO logical volume. */
+    memset(disc[30],0,sizeof(disc[30]));memset(disc[31],0,sizeof(disc[31]));
+    assert(image(sizeof(disc),&r)==RV_PF_OK);
+    assert(r.sectors==32&&r.volume_sectors==30&&!strcmp(r.boot_name,"DEMO_001.23;1"));
+    FILE *f=tmpfile();assert(f);assert(fwrite(disc,1,sizeof(disc),f)==sizeof(disc));rewind(f);
+    rv_load_staged stage;memset(&stage,0,sizeof(stage));
+    assert(rv_load_stage(f,&stage)==RV_PF_OK);
+    assert(stage.meta.volume_sectors==30&&stage.payload_bytes==2048);
+    assert(!memcmp(stage.payload,payload(24),2048));rv_load_discard(&stage);assert(!fclose(f));
+    saved=r;
+    both32(payload(16)+80,33);
+    assert(image(sizeof(disc),&r)==RV_PF_VOLUME&&!memcmp(&r,&saved,sizeof(r)));
+    puts("boot/volume variants: PASS (named root executable, version shorthand, fallback, logical volume and padding)");
+}
 static unsigned char guest_ram[0x200000];
 static void loader_test(void){
     fixture();
@@ -102,8 +160,8 @@ static void loader_test(void){
     rv_pf_result inspected=m;
     assert(image(sizeof(disc),&inspected)==RV_PF_PROFILE&&!memcmp(&inspected,&m,sizeof(m)));
     f=tmpfile();assert(f);assert(fwrite(disc,1,sizeof(disc),f)==sizeof(disc));rewind(f);
-    rv_load_staged empty=s;
-    assert(rv_load_stage(f,&s)==RV_PF_PROFILE&&!memcmp(&s,&empty,sizeof(s)));
+    rv_pf_result empty=s.meta;
+    assert(rv_load_stage(f,&s)==RV_PF_PROFILE&&!s.payload&&!s.payload_bytes&&!memcmp(&s.meta,&empty,sizeof(empty)));
     assert(!fclose(f));
     for(size_t i=0;i<sizeof(guest_ram);i++){
         unsigned char expected=(i>=0x10000&&i<0x10800)?0x36:
@@ -114,6 +172,7 @@ static void loader_test(void){
 }
 int main(int argc,char **argv){
     cue_variants();
+    boot_volume_variants();
     char name[128]="unchanged";
     assert(cue("FILE \"Fixture.bin\" BINARY\r\nTRACK 01 MODE2/2352\r\nINDEX 01 00:00:00\r\n",name)==RV_PF_OK);
     assert(!strcmp(name,"Fixture.bin"));
@@ -122,7 +181,7 @@ int main(int argc,char **argv){
     fixture();
     rv_pf_result r;memset(&r,0,sizeof(r));
     assert(image(sizeof(disc),&r)==RV_PF_OK);
-    assert(r.sectors==32&&r.exe_lba==23&&r.exe_bytes==4096&&r.pc==0x80010000&&r.text_bytes==2048
+    assert(r.sectors==32&&r.volume_sectors==32&&r.exe_lba==23&&r.exe_bytes==4096&&r.pc==0x80010000&&r.text_bytes==2048
         &&r.text_addr==0x80010000&&r.sp==0x801fff00&&!strcmp(r.boot_name,"PSX.EXE;1"));
     rv_pf_result saved=r;
     assert(image(sizeof(disc)-1,&r)==RV_PF_PROFILE&&!memcmp(&r,&saved,sizeof(r)));

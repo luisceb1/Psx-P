@@ -67,13 +67,14 @@ static inline int rv_inspect_ok(const rv_inspect_result *r){
     return r&&r->phase==RV_INSPECT_COMPLETE&&r->status==RV_PF_OK;
 }
 static inline void rv_inspect_print(FILE *f,const rv_inspect_result *r){
-    fprintf(f,"PSX-P Revival disc inspection V8\nread_only=1\nguest_execution=0\n");
+    fprintf(f,"PSX-P Revival disc inspection V16\nread_only=1\nguest_execution=0\n");
     fprintf(f,"phase=%s\nstatus=%s\ncode=%d\n",
         rv_inspect_phase_name(r->phase),rv_inspect_status_name(r->status),r->status);
     if(r->bin_name[0])fprintf(f,"bin=%s\n",r->bin_name);
     if(rv_inspect_ok(r)){
-        fprintf(f,"boot=%s\nsectors=%lu\nexe_lba=%lu\nexe_bytes=%lu\ntext_addr=%08lx\ntext_bytes=%lu\npc=%08lx\ngp=%08lx\nsp=%08lx\n",
-            r->meta.boot_name,(unsigned long)r->meta.sectors,(unsigned long)r->meta.exe_lba,
+        fprintf(f,"boot=%s\nsectors=%lu\nvolume_sectors=%lu\nexe_lba=%lu\nexe_bytes=%lu\ntext_addr=%08lx\ntext_bytes=%lu\npc=%08lx\ngp=%08lx\nsp=%08lx\n",
+            r->meta.boot_name,(unsigned long)r->meta.sectors,(unsigned long)r->meta.volume_sectors,
+            (unsigned long)r->meta.exe_lba,
             (unsigned long)r->meta.exe_bytes,(unsigned long)r->meta.text_addr,
             (unsigned long)r->meta.text_bytes,(unsigned long)r->meta.pc,
             (unsigned long)r->meta.gp,(unsigned long)r->meta.sp);

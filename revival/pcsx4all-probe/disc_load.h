@@ -27,7 +27,7 @@ static inline int rv_load_stage(FILE *f,rv_load_staged *out){
     s.payload=(unsigned char *)malloc(s.payload_bytes);
     if(!s.payload)return RV_LOAD_NO_MEMORY;
     for(uint32_t i=0;i<s.meta.text_bytes/2048u;i++){
-        rc=rv_pf_sector(f,s.meta.exe_lba+1+i,s.meta.sectors,s.payload+i*2048u);
+        rc=rv_pf_sector(f,s.meta.exe_lba+1+i,s.meta.volume_sectors,s.payload+i*2048u);
         if(rc){rv_load_discard(&s);return rc;}
     }
     *out=s;return RV_PF_OK;

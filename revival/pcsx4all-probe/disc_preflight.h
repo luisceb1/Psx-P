@@ -11,6 +11,7 @@ enum rv_pf_status { RV_PF_OK, RV_PF_IO, RV_PF_PROFILE, RV_PF_VOLUME, RV_PF_DIREC
 typedef struct {
     uint32_t sectors,exe_lba,exe_bytes,pc,text_addr,text_bytes,gp,sp;
     char boot_name[32];
+    uint32_t volume_sectors; /* logical ISO9660 extent, not raw BIN length */
 } rv_pf_result;
 typedef struct {uint32_t lba,bytes;} rv_pf_extent;
 static inline unsigned rv_pf_upper(unsigned c){return c>='a'&&c<='z'?c-32:c;}
@@ -139,13 +140,17 @@ static inline int rv_pf_boot_name(const unsigned char *buf,size_t n,char name[32
         while(a<b&&rv_pf_space(buf[a]))a++;
         if(b-a<7||!rv_pf_eq((const char *)buf+a,6,"CDROM:"))return 0;
         a+=6;if(a<b&&(buf[a]=='\\'||buf[a]=='/'))a++;
-        if(b-a<3||b-a>=sizeof(temp)||buf[b-2]!=';'||buf[b-1]!='1')return 0;
-        for(size_t i=a;i<b-2;i++){
+        /* A root filename without an explicit version resolves only to ;1.
+           Other explicit versions and directory components stay unsupported. */
+        size_t end=b;
+        if(b-a>=2&&buf[b-2]==';'&&buf[b-1]=='1')end=b-2;
+        if(end==a||end-a+2>=sizeof(temp))return 0;
+        for(size_t i=a;i<end;i++){
             unsigned c=rv_pf_upper(buf[i]);
             if(!((c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='_'||c=='.'||c=='-'))return 0;
         }
-        for(size_t i=0;i<b-a;i++)temp[i]=(char)rv_pf_upper(buf[a+i]);
-        temp[b-a]=0;
+        for(size_t i=0;i<end-a;i++)temp[i]=(char)rv_pf_upper(buf[a+i]);
+        temp[end-a]=';';temp[end-a+1]='1';temp[end-a+2]=0;
     }
     if(found!=1)return 0;
     while(pos<n)if(buf[pos++])return 0; /* only NUL padding after a NUL */
@@ -173,12 +178,13 @@ static inline int rv_pf_bin_metadata(FILE *f,rv_pf_result *out){
     r.sectors=(uint32_t)(bytes/2352L);
     rc=rv_pf_sector(f,16,r.sectors,sec);if(rc)return rc;
     if(sec[0]!=1||memcmp(sec+1,"CD001",5)||sec[6]!=1||
-        !rv_pf_both32(sec+80,&volume)||volume!=r.sectors||
+        !rv_pf_both32(sec+80,&volume)||volume<18u||volume>r.sectors||
         sec[128]!=0||sec[129]!=8||sec[130]!=8||sec[131]!=0)return RV_PF_VOLUME;
     if(sec[156]<34||sec[157]!=0||!(sec[181]&2)||!rv_pf_both32(sec+158,&root.lba)||
         !rv_pf_both32(sec+166,&root.bytes)||!rv_pf_extent_ok(root,volume)||
         root.bytes%2048||root.bytes>65536)return RV_PF_DIRECTORY;
-    rc=rv_pf_sector(f,17,r.sectors,sec);if(rc)return rc;
+    r.volume_sectors=volume;
+    rc=rv_pf_sector(f,17,volume,sec);if(rc)return rc;
     if(sec[0]!=255||memcmp(sec+1,"CD001",5)||sec[6]!=1)return RV_PF_PROFILE;
     found=rv_pf_find(f,volume,root,"SYSTEM.CNF;1",&cnf);
     if(found<0)return RV_PF_DIRECTORY;
@@ -202,7 +208,7 @@ static inline int rv_pf_bin(FILE *f,rv_pf_result *out){
     rc=rv_pf_bin_metadata(f,&r);if(rc)return rc;
     /* Inspection continues to require every declared payload sector. */
     for(uint32_t i=0;i<r.text_bytes/2048u;i++){
-        rc=rv_pf_sector(f,r.exe_lba+1+i,r.sectors,sec);if(rc)return rc;
+        rc=rv_pf_sector(f,r.exe_lba+1+i,r.volume_sectors,sec);if(rc)return rc;
     }
     *out=r;return RV_PF_OK;
 }
