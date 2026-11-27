@@ -15,10 +15,10 @@ printf 'SDL source revision: %s\n' "$SDL_REV"
 # Regenerate configuration with the installed host tools.
 sh autogen.sh
 CC=psp-gcc AR=psp-gcc-ar RANLIB=psp-gcc-ranlib \
-CFLAGS="-O2 -std=gnu99 -fcommon -G0" \
+CFLAGS="-O2 -std=gnu99 -fcommon -G0 -DICONV_INBUF_NONCONST" \
 LDFLAGS="-L$(psp-config --pspsdk-path)/lib" LIBS="-lc -lpspuser" \
 ./configure --host=psp --prefix="$PREFIX" --disable-shared --enable-static --disable-video-opengl
-make -j2
+make -k -j2
 make install
 test -s "$PREFIX/lib/libSDL.a"
 test -f "$PREFIX/include/SDL/SDL.h"
