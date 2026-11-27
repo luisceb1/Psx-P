@@ -8,6 +8,8 @@ extern int revival_perf_direct;
 unsigned long long revival_perf_now(void);
 void revival_perf_stage(unsigned int stage, unsigned long long start);
 void revival_perf_native_hit(void);
+/* Inclusive timings: GPU bulk dispatch, CD track read, diagnostic log. */
+void revival_perf_component(unsigned int component, unsigned long long start);
 void revival_perf_init(void);
 void revival_perf_begin(void);
 void revival_perf_lace(unsigned int cycle);

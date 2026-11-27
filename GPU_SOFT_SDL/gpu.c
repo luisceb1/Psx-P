@@ -1408,7 +1408,7 @@ const unsigned char primTableCX[256] =
     0,0,0,0,0,0,0,0
 };
 
-void CALLBACK GPUwriteDataMem(unsigned long * pMem, int iSize)
+static void gpu_write_data_impl(unsigned long * pMem, int iSize)
 {
  unsigned char command;
  unsigned long gdata=0;
@@ -1555,6 +1555,14 @@ ENDVRAM:
 }
 
 ////////////////////////////////////////////////////////////////////////
+
+void CALLBACK GPUwriteDataMem(unsigned long *pMem, int iSize)
+{
+    /* Avoid timing every single GP0 word; bulk calls include raster work. */
+    unsigned long long t = iSize >= 16 ? revival_perf_now() : 0;
+    gpu_write_data_impl(pMem, iSize);
+    if (t) revival_perf_component(0, t);
+}
 
 void CALLBACK GPUwriteData(unsigned long gdata)
 {

@@ -290,7 +290,7 @@ void DoMainGui(){
 		pspDebugScreenSetXY(1, 0);
 		pspDebugScreenPrintf("\n");
 		pspDebugScreenPrintf("\n");
-		pspDebugScreenPrintf("  PSX-P Revival 0.0.5 - perf test (PCSX) \n\n");
+		pspDebugScreenPrintf("  PSX-P Revival 0.0.6 - perf test (PCSX) \n\n");
 		pspDebugScreenPrintf("  press X to start your Game Without the Bios logo \n\n");
 		pspDebugScreenPrintf("  press O to start your Game With the Bios logo ;=)\n\n");
 		pspDebugScreenPrintf("  press START to boot the bios shell for edit your MC \n\n");

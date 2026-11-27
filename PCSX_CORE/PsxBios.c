@@ -599,7 +599,7 @@ _start:
 
 	memcpy((char*)PSXM(sp), save, 4*4);
 
-	SysPrintf(tmp);
+	SysPrintf("%s", tmp);
 
 	pc0 = ra;
 }
@@ -1372,13 +1372,13 @@ void psxBios_putchar () { // 3d
     char tmp[12];
 
     sprintf (tmp,"%c",(char)a0);
-    SysPrintf(tmp);
+    SysPrintf("%s", tmp);
 
     pc0 = ra;
 }
 
 void psxBios_puts () { // 3e/3f
-    SysPrintf(Ra0);
+    SysPrintf("%s", Ra0);
 
     pc0 = ra;
 }
