@@ -1,0 +1,77 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <pspkernel.h>
+#include <pspdebug.h>
+#include <stdio.h>
+#include <string.h>
+#include "r3000a.h"
+#include "psxevents.h"
+#include "plugins.h"
+#include "gpu/gpulib/gpu.h"
+PSP_MODULE_INFO("PCSX4ALL integration probe",0,1,0);
+PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
+extern "C" int revival_pcsx4all_probe_one(void);
+extern void execI(void);
+extern unsigned probe_presentations;
+static const u32 start=0x80010000u;
+/* Guest instructions fill entire 256x240 red.
+ * All GP0 writes originate from guest SW, not host calls. */
+static const u32 program[]={
+    0x3c011f80, /* lui r1,1f80 */
+    0x3c020200, /* lui r2,0200 */
+    0x344200ff, /* ori r2,00ff */
+    0xac221810, /* sw r2,1810(r1) */
+    0xac201810, /* sw zero,1810(r1): x=y=0 */
+    0x3c0300f0, /* lui r3,00f0 */
+    0x34630100, /* ori r3,0100 */
+    0xac231810, /* sw r3,1810(r1): size */
+    0x0800400c, /* jump to end */
+    0x00000000
+};
+/* End outside code, start+0x30. */
+static const u32 end_pc=0x80010030u;
+static FILE *report;
+static void mark(const char *name,bool ok){
+    if(report){fprintf(report,"%s,%s\n",name,ok?"PASS":"FAIL");fflush(report);}
+}
+static void setup(R3000Acpu *cpu){
+    psxCpu=cpu;cpu->Reset();
+    memset(&psxRegs,0,sizeof(psxRegs));
+    memset(psxM,0,0x200000);memset(psxH,0,0x10000);
+    memset(psxR,0,0x80000);memset(psxP,0,0x10000);
+    psxRegs.psxM=psxM;psxRegs.psxH=psxH;psxRegs.psxP=psxP;psxRegs.psxR=psxR;
+    psxRegs.writeok=1;psxRegs.pc=start;
+    psxRegs.intCycle[PSXINT_NEXT_EVENT].cycle=0x100000;
+    psxRegs.io_cycle_counter=0x100000;
+    memcpy(psxM+0x10000,program,sizeof(program));
+    GPU_writeStatus(0x00000000);
+    memset(gpu.vram,0,1024*512*2);
+}
+static bool pixels(){
+    return gpu.vram[0]==0x001f && gpu.vram[239*1024+255]==0x001f &&
+        gpu.vram[256]==0 && gpu.vram[240*1024]==0;
+}
+int main(){
+    pspDebugScreenInit();
+    report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
+    memset(&Config,0,sizeof(Config));Config.Cpu=CPU_DYNAREC;
+    if(psxInit()<0){mark("CPU init",false);sceKernelExitGame();return 1;}
+    mark("CPU init",true);
+    if(GPU_init()!=0 || !gpu.vram){mark("GPU init",false);sceKernelExitGame();return 1;}
+    mark("GPU init",true);
+    setup(&psxInt);
+    for(unsigned i=0;i<32 && psxRegs.pc!=end_pc;i++)execI();
+    GPU_updateLace();
+    bool a=psxRegs.pc==end_pc&&pixels();
+    u32 cycles=psxRegs.cycle, regs[32];memcpy(regs,psxRegs.GPR.r,sizeof(regs));
+    mark("Interpreter GP0",a);
+    setup(&psxRec);
+    bool dispatched=revival_pcsx4all_probe_one();
+    GPU_updateLace();
+    bool b=dispatched&&psxRegs.pc==end_pc&&pixels();
+    mark("Dynarec GP0",b);
+    mark("GPR and cycles",a&&b&&cycles==psxRegs.cycle&&!memcmp(regs,psxRegs.GPR.r,sizeof(regs)));
+    GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
+    mark("GU submission",probe_presentations>0);
+    if(report)fclose(report);
+    sceKernelDelayThread(10000000);GPU_shutdown();sceKernelExitGame();return 0;
+}

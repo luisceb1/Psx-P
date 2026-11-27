@@ -8,9 +8,11 @@
 #include "psxcommon.h"
 #include "gpu/gpulib/gpu.h"
 #include "plugin_lib.h"
+#ifndef REVIVAL_GPU_INTEGRATION
 PcsxConfig Config;
 struct pl_data_t pl_data={};
 uint32_t hSyncCount=0, frame_counter=0;
+#endif
 unsigned probe_presentations=0, probe_blanks=0, probe_unsupported=0;
 uint64_t probe_present_us=0;
 static unsigned int list[4096] __attribute__((aligned(64)));

@@ -34,10 +34,30 @@ V0(psxBiosInit) V0(psxBiosShutdown) V0(psxBiosException)
 V0(psxHwReset)
 u8 psxHwRead8(u32) { STOP; }
 u16 psxHwRead16(u32) { STOP; }
+#ifdef REVIVAL_GPU_INTEGRATION
+u32 psxHwRead32(u32 addr) {
+    switch(addr & 0x1fffffffu) {
+    case 0x1f801810: return GPU_readData();
+    case 0x1f801814: return GPU_readStatus();
+    default: STOP;
+    }
+}
+#else
 u32 psxHwRead32(u32) { STOP; }
+#endif
 void psxHwWrite8(u32,u8) { STOP; }
 void psxHwWrite16(u32,u16) { STOP; }
+#ifdef REVIVAL_GPU_INTEGRATION
+void psxHwWrite32(u32 addr,u32 value) {
+    switch(addr & 0x1fffffffu) {
+    case 0x1f801810: GPU_writeData(value); return;
+    case 0x1f801814: GPU_writeStatus(value); return;
+    default: STOP;
+    }
+}
+#else
 void psxHwWrite32(u32,u32) { STOP; }
+#endif
 V0(cdrInterrupt) V0(cdrReadInterrupt) V0(cdrLidSeekInterrupt)
 V0(cdrPlayInterrupt) V0(cdrDmaInterrupt)
 R0(unsigned char,cdrRead0) R0(unsigned char,cdrRead1)
@@ -53,9 +73,11 @@ R0(unsigned char,sioRead8) R0(u16,sioRead16) R0(u32,sioRead32)
 V1(sioWrite8,unsigned char) V1(sioWrite16,u16) V1(sioWrite32,u32)
 R0(u16,sioReadBaud16) R0(u16,sioReadCtrl16) R0(u16,sioReadMode16) R0(u16,sioReadStat16)
 V1(sioWriteBaud16,u16) V1(sioWriteCtrl16,u16) V1(sioWriteMode16,u16)
+#ifndef REVIVAL_GPU_INTEGRATION
 V0(GPU_updateLace) R0(uint32_t,GPU_readData) R0(uint32_t,GPU_readStatus)
 V1(GPU_writeData,uint32_t)
 void GPU_vBlank(int,int) { STOP; }
+#endif
 void CALLBACK SPUasync(uint32_t,uint32_t) { STOP; }
 unsigned short CALLBACK SPUreadRegister(unsigned long) { STOP; }
 void CALLBACK SPUwriteRegister(unsigned long,unsigned short,unsigned int) { STOP; }
