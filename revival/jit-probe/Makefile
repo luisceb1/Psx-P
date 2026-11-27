@@ -1,5 +1,5 @@
 TARGET = revival_jit_probe
-OBJS = main.o jit_emit.o
+OBJS = main.o jit_emit.o jit_cache.o
 VPATH = ..
 INCDIR = ..
 CFLAGS = -O2 -Wall -Wextra -std=gnu99

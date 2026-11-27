@@ -2,26 +2,44 @@
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <stdint.h>
-#include "jit_emit.h"
+#include "jit_cache.h"
+#include <string.h>
 PSP_MODULE_INFO("Revival JIT probe",0,1,0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
-static uint32_t code[REVIVAL_JIT_MAX_WORDS] __attribute__((aligned(64)));
+static struct revival_jit_cache cache;
 static uint32_t gpr[32];
-int main(void) {
-    const uint32_t guest[]={0x24010007,0x2422fffd,0x00221821,0x00032080,0x34850001};
-    size_t n;
-    int ok=0;
-    pspDebugScreenInit();
-    n=revival_jit_emit(guest,sizeof(guest)/sizeof(guest[0]),code,REVIVAL_JIT_MAX_WORDS);
-    if(n) {
-        void (*run)(uint32_t *)=(void (*)(uint32_t *))(uintptr_t)code;
-        sceKernelDcacheWritebackInvalidateRange(code,n*sizeof(code[0]));
-        sceKernelIcacheInvalidateRange(code,n*sizeof(code[0]));
-        run(gpr);
-        ok=(gpr[0]==0 && gpr[1]==7 && gpr[2]==4 && gpr[3]==11 && gpr[4]==44 && gpr[5]==45);
+static int run_block(const struct revival_jit_slot *slot,int fresh,uint32_t expected) {
+    void (*run)(uint32_t *);
+    if(!slot)return 0;
+    memset(gpr,0,sizeof(gpr));gpr[31]=0x12345678;
+    if(fresh) {
+        sceKernelDcacheWritebackInvalidateRange((void *)slot->code,slot->code_count*4u);
+        sceKernelIcacheInvalidateRange((void *)slot->code,slot->code_count*4u);
     }
-    pspDebugScreenPrintf("Allegrex generated code: %s (%u words)\n",ok?"PASS":"FAIL",(unsigned)n);
-    sceKernelDelayThread(5000000);
+    run=(void (*)(uint32_t *))(uintptr_t)slot->code;
+    run(gpr);
+    return gpr[0]==0 && gpr[1]==expected && gpr[2]==expected-3 &&
+           gpr[3]==expected*2-3 && gpr[4]==(expected*2-3)*4 &&
+           gpr[5]==(((expected*2-3)*4)|1u) && gpr[31]==0x12345678;
+}
+int main(void) {
+    uint32_t guest[]={0x24010007,0x2422fffd,0x00221821,0x00032080,0x34850001};
+    const struct revival_jit_slot *slot;
+    int fresh, first, hit, rewritten, rejected;
+    pspDebugScreenInit();
+    revival_jit_cache_reset(&cache);
+    slot=revival_jit_lookup(&cache,0x80010000,guest,5,&fresh);
+    first=fresh && run_block(slot,fresh,7);
+    slot=revival_jit_lookup(&cache,0x80010000,guest,5,&fresh);
+    hit=!fresh && run_block(slot,fresh,7);
+    guest[0]=0x24010009;
+    slot=revival_jit_lookup(&cache,0x80010000,guest,5,&fresh);
+    rewritten=fresh && run_block(slot,fresh,9);
+    guest[0]=0x08000000;
+    rejected=!revival_jit_lookup(&cache,0x80010000,guest,5,&fresh);
+    pspDebugScreenPrintf("Allegrex synthetic probe\nFirst execution: %s\nCache hit: %s\nRewritten code: %s\nUnsupported opcode: %s\n",
+       first?"PASS":"FAIL",hit?"PASS":"FAIL",rewritten?"PASS":"FAIL",rejected?"PASS":"FAIL");
+    sceKernelDelayThread(10000000);
     sceKernelExitGame();
     return 0;
 }
