@@ -177,3 +177,11 @@ done
 make -C "$out" -f /revival/revival/pcsx4all-probe/integration-test/Makefile CD_INTEGRATION=1 EXE_INTEGRATION=1 HLE_INTEGRATION=1 SPU_INTEGRATION=1
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Independent PSP Go pause/suspend probe: no emulator core, no SDL, no GU.
+out=$(dirname "$out")/pause-test
+mkdir -p "$out"
+psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -c /revival/revival/pcsx4all-probe/pause-test/pause_main.c -o "$out/pause_main.o"
+make -C "$out" -f /revival/revival/pcsx4all-probe/pause-test/Makefile
+test -s "$out/EBOOT.PBP"
+sha256sum "$out/EBOOT.PBP"

@@ -2,6 +2,7 @@
 /* Fail closed: these dependencies are NOT implemented by the guest probe. */
 #include <pspkernel.h>
 #include <pspdebug.h>
+#include <pspctrl.h>
 #include "r3000a.h"
 #include "psxhw.h"
 #include "psxdma.h"
@@ -92,7 +93,28 @@ V1(sioWrite8,unsigned char) V1(sioWrite16,u16) V1(sioWrite32,u32)
 R0(u16,sioReadBaud16) R0(u16,sioReadCtrl16) R0(u16,sioReadMode16) R0(u16,sioReadStat16)
 V1(sioWriteBaud16,u16) V1(sioWriteCtrl16,u16) V1(sioWriteMode16,u16)
 #else
-unsigned short pad_read(int){return 0xffff;}
+// PSP digital buttons -> active-low PlayStation digital pad.
+unsigned short revival_pad_map(unsigned int b){
+    unsigned short result=0xffff;
+    const unsigned int psp[]={PSP_CTRL_SELECT,PSP_CTRL_START,PSP_CTRL_UP,PSP_CTRL_RIGHT,
+        PSP_CTRL_DOWN,PSP_CTRL_LEFT,PSP_CTRL_LTRIGGER,PSP_CTRL_RTRIGGER,
+        PSP_CTRL_TRIANGLE,PSP_CTRL_CIRCLE,PSP_CTRL_CROSS,PSP_CTRL_SQUARE};
+    const unsigned char psx[]={0,3,4,5,6,7,10,11,12,13,14,15};
+    for(unsigned i=0;i<sizeof(psx);i++)if(b&psp[i])result&=~(1u<<psx[i]);
+    return result;
+}
+static bool pad_override=false;
+static unsigned int pad_override_buttons=0;
+void revival_pad_override(bool enabled,unsigned int buttons){
+    pad_override=enabled;pad_override_buttons=buttons;
+}
+unsigned short pad_read(int port){
+    if(port!=0)return 0xffff; // neutral second port, not a second physical pad
+    if(pad_override)return revival_pad_map(pad_override_buttons);
+    SceCtrlData pad={};
+    if(sceCtrlPeekBufferPositive(&pad,1)<=0)return 0xffff;
+    return revival_pad_map(pad.Buttons);
+}
 bool FileExists(const char*){STOP;}
 #endif
 #ifndef REVIVAL_GPU_INTEGRATION

@@ -392,6 +392,42 @@ static void runner_test(){
     mark("Runner scheduled frames",run_expected(a)&&run_expected(b)&&a.frames>0&&a.frames==b.frames);
     Config.HLE=FALSE;
 }
+// Deterministic digital-pad checks through the actual SIO MMIO path.
+extern unsigned short revival_pad_map(unsigned int);
+extern void revival_pad_override(bool,unsigned int);
+static bool pad_exchange(u16 ctrl,u16 buttons){
+    const u8 command[]={1,0x42,0,0,0};
+    const u8 expected[]={0xff,0x41,0x5a,(u8)buttons,(u8)(buttons>>8)};
+    bool ok=true;
+    psxMemWrite16(0x1f80104a,0);
+    psxMemWrite16(0x1f80104a,ctrl);
+    for(unsigned i=0;i<sizeof(command);i++){
+        psxMemWrite8(0x1f801040,command[i]);
+        u8 response=psxMemRead8(0x1f801040);
+        if(report)fprintf(report,"PAD byte,%04x,%u,%02x,%02x\n",ctrl,i,response,expected[i]);
+        if(response!=expected[i])ok=false;
+    }
+    if(report)fflush(report);
+    return ok;
+}
+static void pad_test(){
+    const unsigned int sample=PSP_CTRL_CROSS|PSP_CTRL_LEFT|PSP_CTRL_LTRIGGER;
+    const unsigned int all=PSP_CTRL_SELECT|PSP_CTRL_START|PSP_CTRL_UP|PSP_CTRL_RIGHT
+        |PSP_CTRL_DOWN|PSP_CTRL_LEFT|PSP_CTRL_LTRIGGER|PSP_CTRL_RTRIGGER
+        |PSP_CTRL_TRIANGLE|PSP_CTRL_CIRCLE|PSP_CTRL_CROSS|PSP_CTRL_SQUARE;
+    mark("PAD neutral mapping",revival_pad_map(0)==0xffff);
+    mark("PAD combined mapping",revival_pad_map(sample)==0xbb7f);
+    mark("PAD all digital mapping",revival_pad_map(all)==0x0306);
+    revival_pad_override(true,sample);
+    psxMemWrite32(0x1f801074,0);
+    psxMemWrite32(0x1f801070,0);
+    mark("PAD1 SIO response",pad_exchange(0x0002,0xbb7f));
+    bool queued=(psxRegs.interrupt&(1u<<PSXINT_SIO))!=0;
+    mark("PAD SIO IRQ",queued&&dispatch_event(PSXINT_SIO)&&(psxHu32(0x1070)&0x80u));
+    mark("PAD2 neutral response",pad_exchange(0x2002,0xffff));
+    psxMemWrite16(0x1f80104a,0);
+    revival_pad_override(false,0);
+}
 static bool fresh_disc=false;
 static bool cd_ack(unsigned expected){
     psxMemWrite8(0x1f801800,1);
@@ -567,6 +603,8 @@ int main(){
     dma3_test();
     if(report){fprintf(report,"Runner extension begin\n");fflush(report);}
     runner_test();
+    if(report){fprintf(report,"PAD extension begin\n");fflush(report);}
+    pad_test();
     SPUclose();SPUshutdown();
 #endif
     if(report)fclose(report);
