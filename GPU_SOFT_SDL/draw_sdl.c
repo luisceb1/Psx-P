@@ -5548,7 +5548,44 @@ void NoStretchSwap(void)
 /* PSP-specific presentation experiment; preserve the old path as fallback. */
 #include "perf.h"
 #include "pixel.h"
+#include "present.h"
+#include "log.h"
 #if defined(__PSP__) && defined(_SDL) && !defined(_SDL2)
+static int revival_direct_frame(void)
+{
+    static int logged;
+    int ok;
+    unsigned long long t;
+    SDL_Surface *d = display;
+    if (!revival_perf_direct || iUseNoStretchBlt || iUseScanLines ||
+        usCursorActive || XPimage || !d || !d->format) return 0;
+    if (!logged) {
+        DLog("direct surface: %dx%d pitch=%d bpp=%d masks=%08lx/%08lx/%08lx/%08lx flags=%08lx", 
+             d->w,d->h,d->pitch,d->format->BitsPerPixel,(unsigned long)d->format->Rmask,
+             (unsigned long)d->format->Gmask,(unsigned long)d->format->Bmask,
+             (unsigned long)d->format->Amask,(unsigned long)d->flags);
+        logged = 1;
+    }
+    if (d->w != 480 || d->h != 272 || d->format->BitsPerPixel != 32 ||
+        d->clip_rect.x || d->clip_rect.y || d->clip_rect.w != 480 || d->clip_rect.h != 272 ||
+        d->format->Gmask != 0x0000ff00 ||
+        !((d->format->Rmask == 0x000000ff && d->format->Bmask == 0x00ff0000) ||
+          (d->format->Rmask == 0x00ff0000 && d->format->Bmask == 0x000000ff)) ||
+        (d->format->Amask != 0 && d->format->Amask != 0xff000000)) return 0;
+    t = revival_perf_now();
+    if (SDL_LockSurface(d) < 0) return 0;
+    ok = revival_present((const uint16_t *)psxVuw, d->pixels, d->pitch,
+        PSXDisplay.DisplayPosition.x, PSXDisplay.DisplayPosition.y,
+        PreviousPSXDisplay.Range.x1, PreviousPSXDisplay.DisplayMode.y,
+        PreviousPSXDisplay.Range.x0, PreviousPSXDisplay.Range.y0,
+        !!PSXDisplay.RGB24, d->format->Rmask == 0x00ff0000);
+    SDL_UnlockSurface(d);
+    if (!ok) return 0;
+    revival_perf_stage(0, t);
+    revival_perf_native_hit();
+    return 1;
+}
+
 static int revival_blit_full(SDL_Surface *src, SDL_Surface *dst)
 {
     int y, x;
@@ -5597,6 +5634,10 @@ void DoBufferSwap(void)                                // SWAP BUFFERS
  #endif
 
 ////FPS_Counter();
+
+#if defined(__PSP__) && defined(_SDL) && !defined(_SDL2)
+ if (revival_direct_frame()) goto revival_presented;
+#endif
 
  if(iUseNoStretchBlt<2)
   {
@@ -5668,6 +5709,7 @@ SDL_FreeSurface(buf);
  revival_perf_stage(2, stage);
 #endif
 #endif
+ revival_presented:
  if(ulKeybits&KEY_SHOWFPS) DisplayText();               // paint menu text
   {
    if(szDebugText[0] && ((time(NULL) - tStart) < 2))

@@ -8,6 +8,7 @@
 
 int revival_perf_mode = REVIVAL_PERF_LEGACY;
 int revival_perf_native;
+int revival_perf_direct;
 static uint64_t stages[4];
 static unsigned int native_hits;
 static int active;
@@ -22,6 +23,7 @@ void revival_perf_init(void) {
     if (fscanf(f, "%23s", mode) == 1) {
         if (!strcmp(mode, "single")) revival_perf_mode = REVIVAL_PERF_SINGLE;
         else if (!strcmp(mode, "uncapped")) revival_perf_mode = REVIVAL_PERF_UNCAPPED;
+        else if (!strcmp(mode, "direct")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_direct = 1; }
         else if (!strcmp(mode, "native")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_native = 1; }
     }
     fclose(f);
@@ -68,7 +70,7 @@ void revival_perf_lace(unsigned int cycle) {
     f = fopen("PERF.CSV", "ab");
     if (!f) { active = 0; return; }
     fprintf(f, "%s,%d,%d,%llu,%u,%u,%u,%llu,%llu,%llu,%llu,%llu,%llu,%u\n",
-            revival_perf_native ? "native" : names[revival_perf_mode], scePowerGetCpuClockFrequencyInt(),
+            revival_perf_direct ? "direct" : revival_perf_native ? "native" : names[revival_perf_mode], scePowerGetCpuClockFrequencyInt(),
             scePowerGetBusClockFrequencyInt(), (unsigned long long)(now - start),
             laces, vblanks, cycle - last_cycle,
             (unsigned long long)cap_us, (unsigned long long)draw_us,

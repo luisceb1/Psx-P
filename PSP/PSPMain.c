@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
 	pspDebugScreenInit();
 
 	SetLogPath(app_path);
-	DLog("PSX-P Revival 0.0.4 perf test; app=%s", app_path);
+	DLog("PSX-P Revival 0.0.5 perf test; app=%s", app_path);
 	{
 		const char *dirs[] = {"ISO", "BIOS", "MC", "SaveStates"};
 		struct stat st;
