@@ -105,5 +105,9 @@ void CALLBACK SPUasync(uint32_t,uint32_t) { STOP; }
 unsigned short CALLBACK SPUreadRegister(unsigned long) { STOP; }
 void CALLBACK SPUwriteRegister(unsigned long,unsigned short,unsigned int) { STOP; }
 #endif
+#ifdef REVIVAL_SPU_INTEGRATION
+void EmuUpdate(void){} // diagnostic has no frontend
+#else
 V0(EmuUpdate)
+#endif
 int freeze_rw(void*,enum FreezeMode,void*,unsigned) { STOP; }

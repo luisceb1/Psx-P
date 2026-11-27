@@ -161,6 +161,99 @@ static void hle_test(){
     Config.HLE=FALSE;
 }
 #endif
+
+#ifdef REVIVAL_SPU_INTEGRATION
+// Minimal original ISO9660 fixture, Mode 2 Form 1 raw sectors.
+// No commercial content. All extents and addresses are fixed and bounded.
+static unsigned char disc[32][2352];
+static void both16(unsigned char *p,unsigned v){
+    p[0]=v;p[1]=v>>8;p[2]=v>>8;p[3]=v;
+}
+static void both32(unsigned char *p,unsigned v){
+    for(unsigned i=0;i<4;i++){p[i]=v>>(8*i);p[4+i]=v>>(8*(3-i));}
+}
+static unsigned char *data(unsigned n){return disc[n]+24;}
+static unsigned dirent(unsigned char *p,unsigned lba,unsigned size,unsigned flags,const char *name,unsigned len){
+    unsigned n=33+len+((len&1)?0:1);
+    memset(p,0,n);p[0]=n;both32(p+2,lba);both32(p+10,size);
+    p[18]=126;p[19]=11;p[20]=27;p[25]=flags;both16(p+28,1);
+    p[32]=len;memcpy(p+33,name,len);return n;
+}
+static bool make_disc(){
+    memset(disc,0,sizeof(disc));
+    for(unsigned n=0;n<32;n++){
+        memset(disc[n]+1,0xff,10);disc[n][13]=2;
+        disc[n][14]=(n/10)*16+n%10;disc[n][15]=2;
+        disc[n][18]=disc[n][22]=8;
+    }
+    unsigned char *p=data(16);
+    p[0]=1;memcpy(p+1,"CD001",5);p[6]=1;
+    memset(p+8,' ',64);memcpy(p+40,"REVIVAL_TEST",12);
+    both32(p+80,32);both16(p+120,1);both16(p+124,1);both16(p+128,2048);
+    both32(p+132,10);p[140]=18;p[151]=19;
+    dirent(p+156,20,4096,2,"\0",1);
+    p[881]=1;
+    p=data(17);p[0]=255;memcpy(p+1,"CD001",5);p[6]=1;
+    p=data(18);p[0]=1;p[2]=20;p[6]=1;
+    p=data(19);p[0]=1;p[5]=20;p[7]=1;
+    p=data(20);unsigned off=0;
+    off+=dirent(p+off,20,4096,2,"\0",1);
+    off+=dirent(p+off,20,4096,2,"\1",1);
+    off+=dirent(p+off,22,32,0,"SYSTEM.CNF;1",12);
+    dirent(p+off,23,4096,0,"PSX.EXE;1",9);
+    const char cnf[]="BOOT = cdrom:\\PSX.EXE;1\r\n";
+    memcpy(data(22),cnf,sizeof(cnf));
+    EXE_HEADER h={};memcpy(h.id,"PS-X EXE",8);
+    h.pc0=start;h.t_addr=start;h.t_size=2048;h.s_addr=0x801fff00u;
+    memcpy(data(23),&h,sizeof(h));
+    // 20,000 bounded iterations, then the existing red GPU fill program.
+    const u32 loop[]={0x24014e20,0x24420001,0x2421ffff,0x1420fffd,0x24630001,
+        0x08004010,0};
+    memcpy(data(24),loop,sizeof(loop));memcpy(data(24)+64,program,sizeof(program));
+    // Relocate the final jump to end at start+0x70.
+    const u32 jump=0x0800401c;memcpy(data(24)+64+8*4,&jump,4);
+    FILE *f=fopen("REVIVAL_BOOT.bin","wb");if(!f)return false;
+    bool ok=fwrite(disc,1,sizeof(disc),f)==sizeof(disc);if(fclose(f))ok=false;
+    f=fopen("REVIVAL_BOOT.cue","w");if(!f)return false;
+    if(fprintf(f,"FILE \"REVIVAL_BOOT.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n")<0)ok=false;
+    if(fclose(f))ok=false;return ok;
+}
+extern unsigned probe_presentations;
+static void disc_boot_test(){
+    mark("Disc fixture creation",make_disc());
+    SetIsoFile("REVIVAL_BOOT.bin");
+    bool opened=CDR_init()==0&&CDR_open()==0;
+    mark("Disc BIN/CUE open",opened);if(!opened)return;
+    unsigned char msf[]={0,2,0x16};
+    bool sector=CDR_readTrack(msf)==0;
+    unsigned char *b=sector?CDR_getBuffer():NULL;
+    mark("Disc ISO9660 sector",b&&!memcmp(b+13,"CD001",5));
+    Config.HLE=TRUE;Config.Cpu=CPU_DYNAREC;psxCpu=&psxRec;
+    psxReset();
+    mark("Disc identification",CheckCdrom()==0);
+    // Execute actual HLE bootstrap opcode using the interpreter.
+    execI();
+    bool loaded=psxRegs.pc==start&&psxRegs.GPR.n.sp==0x801fff00u
+        &&psxMu32(start)==0x24014e20u;
+    mark("Disc HLE bootstrap",loaded);
+    if(loaded){
+        unsigned blocks=0;bool loop_ok=false;
+        while(psxRegs.pc!=0x80010070u && blocks<20010){
+            if(psxRegs.pc==0x80010040u)loop_ok=psxRegs.GPR.r[1]==0&&psxRegs.GPR.r[2]==20000&&psxRegs.GPR.r[3]==20000;
+            psxBranchTest();
+            if(!revival_pcsx4all_probe_one())break;
+            blocks++;
+        }
+        mark("Disc loop registers",loop_ok);
+        mark("Disc bounded native execution",loop_ok&&psxRegs.pc==0x80010070u&&psxRegs.GPR.r[0]==0);
+        // Loop values are overwritten by the drawing routine; verify loop separately via dispatch count.
+        if(report){fprintf(report,"Disc native blocks,%u\n",blocks);fflush(report);}
+        GPU_updateLace();
+        mark("Disc guest GPU output",gpu.vram[0]==0x001f);
+    }
+    CDR_close();CDR_shutdown();Config.HLE=FALSE;
+}
+#endif
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
@@ -205,6 +298,7 @@ int main(){
     mark("SPU MMIO control",(psxMemRead16(0x1f801daa)&0x8000)!=0);
     SPUasync(psxRegs.cycle,1);
     mark("SPU update returned",true);
+    disc_boot_test();
     SPUclose();SPUshutdown();
 #endif
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();

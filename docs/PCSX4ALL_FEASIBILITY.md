@@ -118,3 +118,5 @@ GU submission,PASS
 ```
 
 This validates bounded synthetic integration paths, not game compatibility, frame rate, audible sound, DMA3/DMA4 data transfer, independent BIN/CUE reader, ISO9660 bootstrap, MDEC decoding, pad input or memory card persistence. Red rectangle observation supports visible output, not precise pixel geometry or final frame identity. Next gate: synthetic disc boot and bounded continuous execution, then privately supplied game media after loader safety review. No public binary; retain interpreter and stable main.
+
+Add full diagnostic synthetic raw Mode2 BIN/CUE ISO9660 fixture with SYSTEM.CNF and PSX.EXE, real CheckCdrom and HLE bootstrap opcode, bounded native loop and guest GPU output. Fixture only; no external disc selection, no EDC/ECC validation, no DMA3 transfer validation or general continuous executor. EmuUpdate no-op only in full diagnostic to allow scheduled frame events. CI and physical validation pending.
