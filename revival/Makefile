@@ -16,7 +16,9 @@ test:
 	./audio_queue_test
 	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/disc_session_test.c -o disc_session_test
 	./disc_session_test
+	$(CC) $(CFLAGS) -Ipcsx4all-probe tests/core_session_test.c -o core_session_test
+	./core_session_test
 inspect:
 	$(CC) $(CFLAGS) -Ipcsx4all-probe pcsx4all-probe/inspect_cli.c -o disc_inspect
 clean:
-	rm -f storage_test present_test timer_policy_test display_stage_test disc_preflight_test disc_inspect audio_queue_test disc_session_test
+	rm -f storage_test present_test timer_policy_test display_stage_test disc_preflight_test disc_inspect audio_queue_test disc_session_test core_session_test

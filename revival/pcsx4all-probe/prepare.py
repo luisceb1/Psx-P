@@ -37,6 +37,25 @@ s = s[:start] + """static inline void clear_insn_cache(void *start, void *end, i
 # Smaller code arena for first port exploration; upstream safety reserve retained.
 replace_once("#define RECMEM_SIZE         (12 * 1024 * 1024)",
              "#define RECMEM_SIZE         (4 * 1024 * 1024)")
+# Release the non-virtual block pointer tables on shutdown; allocated by recInit.
+# Reset only after allocation success. The static code arena is not heap-owned.
+replace_once("""\trecReset();
+
+\tif (recRAM == NULL || recROM == NULL || recMemBase == NULL || psxRecLUT == NULL) {
+\t\tprintf("Error allocating memory\\n"); return -1;
+\t}""", """\tif (recRAM == NULL || recROM == NULL || recMemBase == NULL || psxRecLUT == NULL) {
+\t\tif (!rec_mem_mapped) { free(recRAM); free(recROM); recRAM = recROM = NULL; }
+\t\tprintf("Error allocating memory\\n"); return -1;
+\t}
+\trecReset();""")
+replace_once("""\tif (rec_mem_mapped)
+\t\trec_munmap_rec_mem();
+\tpsx_mem_mapped = rec_mem_mapped = false;""", """\tif (rec_mem_mapped)
+\t\trec_munmap_rec_mem();
+\telse { free(recRAM); free(recROM); }
+\trecRAM = recROM = NULL;
+\tmemset(psxRecLUT, 0, sizeof(psxRecLUT));
+\tpsx_mem_mapped = rec_mem_mapped = false;""")
 # Replace the C inline-asm dispatcher bridge with an ordinary external call.
 # The separate assembly routine has an explicit save frame and compiler-visible ABI.
 start = s.index("__attribute__((noinline)) static void recFunc(void *fn)")
@@ -51,6 +70,17 @@ static void recFunc(void *fn)
 }
 """ + s[end:]
 p.write_text(s)
+# The pinned core can own CPU resources even when PSX RAM allocation fails.
+# Unwind both after a successful CPU init but failed memory init.
+cpu = root / "src/r3000a.cpp"
+s = cpu.read_text()
+replace_once("\treturn psxMemInit();", """\tint rc = psxMemInit();
+\tif (rc < 0) {
+\t\tpsxCpu->Shutdown();
+\t\tpsxMemShutdown();
+\t}
+\treturn rc;""")
+cpu.write_text(s)
 # Upstream signed constant division uses unsigned values (including abs).
 # Avoid the entire unverified shortcut, not just the GCC overload error.
 # Signed constant multiplication also needs INT_MIN / negative tests.

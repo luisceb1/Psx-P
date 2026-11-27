@@ -727,23 +727,71 @@ static void direct_disc_test(){
     Config.HLE=FALSE;
 }
 #endif
+#ifdef REVIVAL_SPU_INTEGRATION
+#include "../core_session.h"
+static rv_core_session core_session={0};
+static R3000Acpu *core_cpu_owner=NULL;
+static long core_start_cpu(){
+    int rc=psxInit();
+    mark("CPU init",rc==0);
+    if(rc==0)core_cpu_owner=psxCpu;
+    return rc;
+}
+static long core_stop_cpu(){
+    if(!core_cpu_owner)return -1;
+    // Diagnostics switch the active engine. Shutdown the one which allocated
+    // the core tables and RAM, not the last engine selected for execution.
+    psxCpu=core_cpu_owner;
+    psxShutdown();
+    core_cpu_owner=NULL;psxCpu=NULL;
+    memset(&psxRegs,0,sizeof(psxRegs));
+    return 0;
+}
+static long core_start_spu(){
+    memset(&spu_config,0,sizeof(spu_config));
+    spu_config.iHaveConfiguration=1;spu_config.iDisabled=1;
+    spu_config.iVolume=768;spu_config.iUseInterpolation=2;
+    long rc=SPUinit();
+    if(rc==0){
+        rc=SPUopen();
+        if(rc!=0)SPUshutdown();
+    }
+    mark("SPU init null backend",rc==0);
+    if(rc==0){SPUregisterCallback(probe_spu_irq);SPUregisterScheduleCb(probe_spu_schedule);}
+    return rc;
+}
+static long core_stop_spu(){return SPUshutdown();}
+static long core_start_gpu(){
+    long rc=GPU_init();
+    if(rc==0&&!gpu.vram)rc=-1;
+    mark("GPU init",rc==0);
+    if(rc!=0&&gpu.vram)GPU_shutdown();
+    return rc;
+}
+static long core_stop_gpu(){
+    long rc=GPU_shutdown();
+    return rc==0&&gpu.vram? -1:rc;
+}
+static const rv_core_stage core_stages[RV_CORE_STAGES]={
+    {core_start_cpu,core_stop_cpu},{core_start_spu,core_stop_spu},{core_start_gpu,core_stop_gpu}
+};
+#endif
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
     memset(&Config,0,sizeof(Config));Config.Cpu=CPU_DYNAREC;
-    if(psxInit()<0){mark("CPU init",false);sceKernelExitGame();return 1;}
-    mark("CPU init",true);
 #ifdef REVIVAL_SPU_INTEGRATION
-    memset(&spu_config,0,sizeof(spu_config));
-    spu_config.iHaveConfiguration=1;spu_config.iDisabled=1;
-    spu_config.iVolume=768;spu_config.iUseInterpolation=2;
-    bool sound=SPUinit()==0 && SPUopen()==0;
-    mark("SPU init null backend",sound);
-    if(!sound){if(report)fclose(report);sceKernelExitGame();return 1;}
-    SPUregisterCallback(probe_spu_irq);SPUregisterScheduleCb(probe_spu_schedule);
-#endif
-    if(GPU_init()!=0 || !gpu.vram){mark("GPU init",false);sceKernelExitGame();return 1;}
+    long core_rc=rv_core_begin(&core_session,core_stages);
+    if(core_rc!=0){
+        if(report){fprintf(report,"Core init failure,%ld,remaining=%u\n",core_rc,core_session.active);fclose(report);}
+        sceKernelExitGame();return 1;
+    }
+#else
+    if(psxInit()<0){mark("CPU init",false);if(report)fclose(report);sceKernelExitGame();return 1;}
+    mark("CPU init",true);
+    if(GPU_init()!=0 || !gpu.vram){mark("GPU init",false);if(report)fclose(report);sceKernelExitGame();return 1;}
     mark("GPU init",true);
+#endif
     setup(&psxInt);
     for(unsigned i=0;i<32 && psxRegs.pc!=end_pc;i++)execI();
     GPU_updateLace();
@@ -823,8 +871,14 @@ int main(){
         long rc=rv_disc_end(&disc_session,&disc_ops);
         if(report){fprintf(report,"Disc final shutdown,%ld\n",rc);fflush(report);}
     }
-    SPUclose();SPUshutdown();
+    // Never tear down lower-level core resources if the CD still owns them.
+    long shutdown_rc=disc_session.state==RV_DISC_IDLE?rv_core_end(&core_session,core_stages):-1;
+    mark("Core ordered shutdown",shutdown_rc==0&&core_session.active==0&&!gpu.vram
+        &&!core_cpu_owner&&!psxCpu&&!psxM&&!psxH&&!psxP&&!psxR);
+    if(report){fprintf(report,"Core shutdown,%ld,remaining=%u\n",shutdown_rc,core_session.active);fflush(report);}
+#else
+    GPU_shutdown();
 #endif
     if(report)fclose(report);
-    GPU_shutdown();sceKernelExitGame();return 0;
+    sceKernelExitGame();return 0;
 }
