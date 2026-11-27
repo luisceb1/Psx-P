@@ -67,7 +67,14 @@ SDL_MIXER ?= 0
 INCDIR += $(SDL_PREFIX)/include/SDL
 ## Legacy C dialect and tentative global definitions in PCSX headers.
 REVIVAL_OPT ?= -Os
-CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LABEL=\\\"$(REVIVAL_OPT)\\\"  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
+ifeq ($(REVIVAL_OPT),-O2)
+REVIVAL_OPT_LEVEL = 2
+else ifeq ($(REVIVAL_OPT),-Os)
+REVIVAL_OPT_LEVEL = 1
+else
+$(error REVIVAL_OPT must be -Os or -O2)
+endif
+CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LEVEL=$(REVIVAL_OPT_LEVEL) -fsingle-precision-constant -funswitch-loops -fbranch-target-load-optimize2 -D__PSP__ -D_SDL
 #-D_SDL2  
 
 #-D_OPENGL

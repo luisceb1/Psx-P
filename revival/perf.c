@@ -13,7 +13,11 @@ int revival_perf_direct;
 int revival_cd_ack_fix;
 int revival_timer_fix;
 int revival_fastcore;
-#ifndef REVIVAL_OPT_LABEL
+#if REVIVAL_OPT_LEVEL == 2
+#define REVIVAL_OPT_LABEL "-O2"
+#elif REVIVAL_OPT_LEVEL == 1
+#define REVIVAL_OPT_LABEL "-Os"
+#else
 #define REVIVAL_OPT_LABEL "unknown"
 #endif
 unsigned int revival_timer_events[3], revival_timer_irqs[3], revival_hw_exceptions;
