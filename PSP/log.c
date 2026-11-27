@@ -32,9 +32,8 @@ static char szLogfile[256]=""; // static so if dir change the log is still ok...
 char *GetAppPath();
 char LogPath[512];
 void SetLogPath(char *path){
-	strcpy(&szLogfile[0],path);
-	strcpy(&szLogfile[0] + strlen(&szLogfile[0]),"/PSXP_OUT.TXT");
-	strcpy(LogPath,path);
+	snprintf(szLogfile, sizeof(szLogfile), "%s/PSXP_OUT.TXT", path);
+	snprintf(LogPath, sizeof(LogPath), "%s", path);
 }
 
 #define DLOGIT 1
@@ -51,34 +50,21 @@ static int readbefore=0;
 
 void DLog (const char *fmt, ...)
 {
-#if (DLOGIT == 1)
-/*	if(1){
-		char buf [1024];
-		char buf2[5];
-		strcpy(buf2,"\n");
-		va_list ap;
-		int len;
-		int log_fd;
-
-		if(!readbefore){
-			readbefore =1;
-			log_fd = sceIoOpen(szLogfile, PSP_O_CREAT | PSP_O_WRONLY, 0777);
-		}
-		log_fd = sceIoOpen(szLogfile, PSP_O_CREAT | PSP_O_APPEND | PSP_O_WRONLY, 0644);
-
-		if (log_fd >= 0) {
-			va_start(ap, fmt);
-			len = vsnprintf(buf, sizeof(buf), fmt, ap);
-			va_end(ap);
-			sceIoWrite(log_fd, buf, len);
-			sceIoWrite(log_fd, buf2, strlen(buf2));
-			sceIoClose(log_fd);
-		}
-	}*/
-#endif
+	/* Diagnostic only: cap writes to avoid unbounded I/O in gameplay. */
+	static unsigned int lines;
+	char buf[512];
+	va_list args;
+	FILE *f;
+	if (!szLogfile[0] || lines >= 256) return;
+	f = fopen(szLogfile, lines ? "ab" : "wb");
+	if (!f) return;
+	lines++;
+	va_start(args, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+	fprintf(f, "%s\n", buf);
+	fclose(f);
 }
-
-
 
 /*
 void DLog(char const *fmt,...)
@@ -181,7 +167,7 @@ void HWLog(char const *fmt,...)
 			va_start(ap, fmt);
 			len = vsnprintf(buf, sizeof(buf), fmt, ap);
 			va_end(ap);
-			sceIoWrite(log_fd, buf, len);
+			if (len > 0) sceIoWrite(log_fd, buf, len < (int)sizeof(buf) ? len : (int)sizeof(buf)-1);
 			sceIoWrite(log_fd, buf2, strlen(buf2));
 			sceIoClose(log_fd);
 		}

@@ -20,6 +20,8 @@
 #include <pspdebug.h>
 #include <psppower.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include "storage.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -51,7 +53,7 @@
 #include "interp.h"
 #include "vfpu_ops.h"
 
-PSP_MODULE_INFO("PSXP Alpha 2 based on PCSX Emulator", 0x1000, 1, 1);
+PSP_MODULE_INFO("PSX-P Revival", 0x1000, 0, 1);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER|0x00004000);
 
 
@@ -252,7 +254,17 @@ int main(int argc, char* argv[])
 	int loadst = 0;
 	int i;
 
-	if (!getcwd(app_path, sizeof(app_path))) return 1;
+	pspDebugScreenInit();
+	if (argc > 0 && revival_app_dir(argv[0], app_path, sizeof(app_path)) == 0) {
+		size_t len = strlen(app_path);
+		if (len > 5) app_path[len - 1] = '\0';
+	} else {
+		pspDebugScreenPrintf("Cannot resolve application directory. Launch from XMB.\n");
+		sceKernelDelayThread(3000000);
+		return 1;
+	}
+	/* Never operate on another installation's saves. */
+	if (chdir(app_path) != 0) return 1;
 
 	ar = &argc;
 	av = argv;
@@ -260,12 +272,32 @@ int main(int argc, char* argv[])
 	pspDebugScreenInit();
 
 	SetLogPath(app_path);
+	DLog("PSX-P Revival 0.0.1 diagnostic; app=%s", app_path);
+	{
+		const char *dirs[] = {"ISO", "BIOS", "MC", "SaveStates"};
+		struct stat st;
+		unsigned int n;
+		for (n = 0; n < sizeof(dirs)/sizeof(dirs[0]); n++) {
+			if (mkdir(dirs[n], 0777) != 0 &&
+			    (stat(dirs[n], &st) != 0 || !S_ISDIR(st.st_mode))) {
+				DLog("Cannot create or access %s", dirs[n]);
+				pspDebugScreenPrintf("Cannot access %s\n", dirs[n]);
+				sceKernelDelayThread(3000000);
+				return 1;
+			}
+		}
+	}
 
 	SetupCallbacks();
 	
 	LoadConfig();
 
-	SysInit();
+	if (SysInit() < 0) {
+		DLog("Startup failed");
+		pspDebugScreenPrintf("Startup failed; see PSXP_OUT.TXT\n");
+		sceKernelDelayThread(3000000);
+		return 1;
+	}
 
 	sceDisplaySetMode(PSP_DISPLAY_PIXEL_FORMAT_565, 480,272);
 	//sceKernelDcacheWritebackInvalidateAll();
@@ -323,10 +355,10 @@ int SysInit() {
 
     SysPrintf("psxInit()\r\n");
 	Config.Cpu = 1;// interpreter
-	psxInit();
+	if (psxInit() < 0) return -1;
 
     SysPrintf("LoadPlugins()\r\n");
-	LoadPlugins();
+	if (LoadPlugins() < 0) return -1;
     SysPrintf("LoadMcds()\r\n");
 	LoadMcds(Config.Mcd1, Config.Mcd2);
 
@@ -351,10 +383,9 @@ void SysPrintf(char *fmt, ...) {
 	char msg[512];
 
 	va_start(list, fmt);
-	vsprintf(msg, fmt, list);
+	vsnprintf(msg, sizeof(msg), fmt, list);
 	va_end(list);
-	strcat(msg,"\n");
-	DLog(msg);
+	DLog("%s", msg);
 }
 
 void *SysLoadLibrary(char *lib) {
@@ -367,7 +398,7 @@ void *SysLoadSym(void *lib, char *sym) {
 }
 
 const char *SysLibError() {
-//	return dlerror();
+return NULL; /* Plugins are statically linked in this build. */
 }
 
 void SysCloseLibrary(void *lib) {
@@ -384,12 +415,16 @@ void SysRunGui() {
 }
 
 void SysMessage(char *fmt, ...) {
-	
+	char msg[512];
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(msg, sizeof(msg), fmt, args);
+	va_end(args);
+	DLog("ERROR: %s", msg);
+	pspDebugScreenPrintf("%s\n", msg);
 }
 
-void exit(int code){
-
-}
+/* Use the SDK's real exit(), not the old returning stub. */
 
 #endif
 

@@ -27,17 +27,20 @@ int psxMemInit() {
 
 	psxMemRLUT = (long*)malloc(0x10000 * 4);
 	psxMemWLUT = (long*)malloc(0x10000 * 4);
-	memset(psxMemRLUT, 0, 0x10000 * 4);
-	memset(psxMemWLUT, 0, 0x10000 * 4);
 
 	psxM = (char*)malloc(0x00200000);
 	psxP = (char*)malloc(0x00010000);
 	psxH = (char*)malloc(0x00010000);
 	psxR = (char*)malloc(0x00080000);
 	if (psxMemRLUT == NULL || psxMemWLUT == NULL || 
-		psxM == NULL || psxP == NULL || psxH == NULL) {
+		psxM == NULL || psxP == NULL || psxH == NULL || psxR == NULL) {
+		psxMemShutdown();
 		SysMessage(_("Error allocating memory")); return -1;
 	}
+
+	memset(psxMemRLUT, 0, 0x10000 * 4);
+	memset(psxMemWLUT, 0, 0x10000 * 4);
+	memset(psxR, 0, 0x80000);
 
 // MemR
 	for (i=0; i<0x80; i++) psxMemRLUT[i + 0x0000] = (u32)&psxM[(i & 0x1f) << 16];
@@ -93,6 +96,8 @@ void psxMemShutdown() {
 	free(psxR);
 	free(psxMemRLUT);
 	free(psxMemWLUT);
+	psxM = psxP = psxH = psxR = NULL;
+	psxMemRLUT = psxMemWLUT = NULL;
 }
 
 static int writeok=1;

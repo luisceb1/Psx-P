@@ -43,7 +43,7 @@ extern char app_path[128];
 extern long g_runbios;
 
 typedef struct configparm{
-	char name[32];
+	char name[64];
 	long *var;
 }configP;
 
@@ -122,7 +122,7 @@ extern void SaveConfig();
 void DoConfig(){
 	
 	int done =0;
-	SceCtrlData pad,oldPad;
+	SceCtrlData pad,oldPad = {0};
 
 	InitConfigParms();
 
@@ -193,9 +193,10 @@ void GetFileList(const char *root)
 {
 	int dfd;
 	dfd = sceIoDopen(root);
-	if(dfd > 0){
+	if(dfd >= 0){
 		SceIoDirent dir;
-		while(sceIoDread(dfd, &dir) > 0)
+		memset(&dir, 0, sizeof(dir));
+		while(filelist.cnt < 256 && sceIoDread(dfd, &dir) > 0)
 		{
 			if(dir.d_stat.st_attr & FIO_SO_IFDIR)
 			{
@@ -203,6 +204,7 @@ void GetFileList(const char *root)
 			}
 			else
 			{				
+				if (strlen(dir.d_name) >= sizeof(filelist.fname[0].name)) continue;
 				strcpy(filelist.fname[filelist.cnt].name,dir.d_name);
 				filelist.cnt++;				
 			}
@@ -231,7 +233,7 @@ void DisplayFileList(){
 }
 
 int HasExtension(char *filename){
-	if(filename[strlen(filename)-4] == '.'){
+	if(strlen(filename) >= 4 && filename[strlen(filename)-4] == '.'){
 		return 1;
 	}
 	return 0;
@@ -255,11 +257,12 @@ void DoMainGui(){
 	char appsave[1024];
 	strcpy(appsave,app_path);
 
-	SceCtrlData pad,oldPad;
+	SceCtrlData pad,oldPad = {0};
 	
 	DLog("DoMainGui1, apppath = %s",app_path);
 
 	ClearFileList();
+	selpos = 0;
 
 //	DLog("DoMainGui2, apppath = %s",app_path);
 
@@ -287,7 +290,7 @@ void DoMainGui(){
 		pspDebugScreenSetXY(1, 0);
 		pspDebugScreenPrintf("\n");
 		pspDebugScreenPrintf("\n");
-		pspDebugScreenPrintf("  Welcome on PSXP Yoshihiro's Based on *PCSX* Core \n\n");
+		pspDebugScreenPrintf("  PSX-P Revival 0.0.1 - diagnostic (PCSX) \n\n");
 		pspDebugScreenPrintf("  press X to start your Game Without the Bios logo \n\n");
 		pspDebugScreenPrintf("  press O to start your Game With the Bios logo ;=)\n\n");
 		pspDebugScreenPrintf("  press START to boot the bios shell for edit your MC \n\n");
@@ -308,8 +311,8 @@ void DoMainGui(){
 				ROM_LOAD_TYPE = 2;
 				break;
 				}
-				if(pad.Buttons & PSP_CTRL_CROSS){
-					sprintf(romname,"%s/ISO/%s",app_path,filelist.fname[selpos].name);
+				if((pad.Buttons & PSP_CTRL_CROSS) && filelist.cnt > 0 && selpos >= 0 && selpos < filelist.cnt){
+					if (snprintf(romname, sizeof(romname), "%s/ISO/%s", app_path, filelist.fname[selpos].name) >= (int)sizeof(romname)) { DLog("Image path too long"); oldPad = pad; continue; }
 					DLog("romname = %s",romname);
 					DLog("DoMainGui2, apppath = %s",app_path);
 					//check file type, psx or bin
@@ -323,8 +326,8 @@ void DoMainGui(){
 					}
 					
 				}
-					if(pad.Buttons & PSP_CTRL_CIRCLE){
-					sprintf(romname,"%s/ISO/%s",app_path,filelist.fname[selpos].name);
+					if((pad.Buttons & PSP_CTRL_CIRCLE) && filelist.cnt > 0 && selpos >= 0 && selpos < filelist.cnt){
+					if (snprintf(romname, sizeof(romname), "%s/ISO/%s", app_path, filelist.fname[selpos].name) >= (int)sizeof(romname)) { DLog("Image path too long"); oldPad = pad; continue; }
 					DLog("romname = %s",romname);
 					DLog("DoMainGui2, apppath = %s",app_path);
 					//check file type, psx or bin
@@ -348,7 +351,7 @@ void DoMainGui(){
 				}
 				if(pad.Buttons & PSP_CTRL_DOWN){
 					selpos++;
-					if(selpos >= filelist.cnt -1)selpos=filelist.cnt-1;
+					if(selpos >= filelist.cnt -1)selpos=filelist.cnt > 0 ? filelist.cnt-1 : 0;
 				}
 
 			}
