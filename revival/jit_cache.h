@@ -6,7 +6,7 @@
 #define REVIVAL_JIT_MIN_GUEST 4u
 struct revival_jit_slot {
     uint32_t pc;
-    unsigned int valid, guest_count, code_count;
+    unsigned int valid, guest_count, code_count, verified;
     uint32_t guest[REVIVAL_JIT_MAX_GUEST];
     uint32_t code[REVIVAL_JIT_MAX_WORDS] __attribute__((aligned(64)));
 };
@@ -17,7 +17,7 @@ struct revival_jit_cache {
 /* live points to readable current instruction words; avail excludes page boundary.
  * Cache hit requires exact guest-word match, not only PC or a hash.
  * fresh is set for newly generated code requiring host cache synchronization. */
-const struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
+struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
     uint32_t pc,const uint32_t *live,size_t avail,int *fresh);
 void revival_jit_cache_reset(struct revival_jit_cache *c);
 #endif

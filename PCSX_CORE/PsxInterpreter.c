@@ -23,6 +23,7 @@
 #include <pspkernel.h>
 #include "jit_cache.h"
 #include "jit_shadow.h"
+#include "jit_policy.h"
 #include "log.h"
 #endif
 
@@ -816,11 +817,16 @@ static int intInit() {
 static struct revival_jit_cache shadow_cache;
 static unsigned int shadow_attempts, shadow_blocks, shadow_words, shadow_mismatch;
 int revival_jit_shadow_enabled;
+int revival_jit_native_enabled;
+static unsigned int native_blocks,native_words,native_audits;
+static unsigned int native_since_audit;
+/* PSP guest register layout must exactly match emitted word accesses. */
+typedef char revival_gpr_width_check[(sizeof(psxRegs.GPR.r[0])==sizeof(uint32_t))?1:-1];
 static int intJitShadow(void) {
     uint32_t pc=(uint32_t)psxRegs.pc, phys=pc&0x1fffffffu;
-    uint32_t before[32], expected[32];
+    uint32_t expected[32];
     const uint32_t *live;
-    const struct revival_jit_slot *slot;
+    struct revival_jit_slot *slot;
     unsigned int j, n;
     uint32_t cycle;
     int fresh;
@@ -833,20 +839,31 @@ static int intJitShadow(void) {
     if(branch || (pc&3u) || phys>=0x800000u ||
        !(pc<0x800000u || (pc>=0x80000000u && pc<0x80800000u) ||
          (pc>=0xa0000000u && pc<0xa0800000u)) || psxRegs.GPR.r[0]) return 0;
-    if((++shadow_attempts&63u)!=0) return 0;
+    ++shadow_attempts;
+    if(!revival_jit_native_enabled && (shadow_attempts&63u)!=0) return 0;
     live=(const uint32_t *)PSXM(pc);
-    if(!live) return 0;
+    if(!live || !revival_jit_supported(live[0])) return 0;
     slot=revival_jit_lookup(&shadow_cache,pc,live,(0x10000u-(pc&65535u))/4u,&fresh);
     if(!slot) return 0;
     n=slot->guest_count;
-    memcpy(before,psxRegs.GPR.r,sizeof(before));
-    memcpy(expected,before,sizeof(expected));
     if(fresh) {
         sceKernelDcacheWritebackInvalidateRange((void *)slot->code,slot->code_count*4u);
         sceKernelIcacheInvalidateRange((void *)slot->code,slot->code_count*4u);
     }
     run=(void (*)(uint32_t *))(uintptr_t)slot->code;
-    run(expected); /* only scratch GPRs; interpreter remains authoritative */
+#ifdef REVIVAL_ENABLE_JIT_NATIVE
+    if(revival_jit_native_enabled && revival_jit_can_run(slot->verified,native_since_audit)) {
+        /* Only non-trapping ALU ops; preserve the legacy interpreter's exact
+         * top-level PC, opcode and unchanged cycle behavior. */
+        run((uint32_t *)(void *)psxRegs.GPR.r);
+        psxRegs.pc=pc+4u*n;
+        psxRegs.code=slot->guest[n-1];
+        ++native_blocks;native_words+=n;++native_since_audit;
+        return 1;
+    }
+#endif
+    memcpy(expected,psxRegs.GPR.r,sizeof(expected));
+    run(expected); /* scratch registers for differential execution */
     cycle=psxRegs.cycle;
     for(j=0;j<n;j++) execI();
     ++shadow_blocks;shadow_words+=n;
@@ -855,14 +872,18 @@ static int intJitShadow(void) {
        psxRegs.code!=slot->guest[n-1]) {
         ++shadow_mismatch;
         revival_jit_shadow_enabled=0;
+        revival_jit_native_enabled=0;
         DLog("JIT shadow mismatch at %08lx; disabled",(unsigned long)pc);
+    } else {
+        slot->verified=revival_jit_verified_next(slot->verified);
+        if(revival_jit_native_enabled && (native_since_audit&255u)==255u) { ++native_audits; native_since_audit=0; }
     }
     return 1; /* interpreter already executed this block */
 }
 void revival_jit_shadow_snapshot(FILE *f) {
-    fprintf(f,",%u,%u,%u,%u,%u,%u,%u,%u",shadow_attempts,shadow_blocks,
+    fprintf(f,",%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%d",shadow_attempts,shadow_blocks,
         shadow_words,shadow_mismatch,shadow_cache.hits,shadow_cache.misses,
-        shadow_cache.changed,shadow_cache.rejected);
+        shadow_cache.changed,shadow_cache.rejected,native_blocks,native_words,native_audits,revival_jit_native_enabled);
 }
 #endif
 
@@ -870,13 +891,14 @@ static void intReset() {
 #ifdef __PSP__
     revival_jit_cache_reset(&shadow_cache);
     shadow_attempts=shadow_blocks=shadow_words=shadow_mismatch=0;
+    native_blocks=native_words=native_audits=native_since_audit=0;
 #endif
 }
 
 static void intExecute() {
     for (;;) {
 #ifdef __PSP__
-        if(revival_jit_shadow_enabled && intJitShadow()) continue;
+        if((revival_jit_shadow_enabled || revival_jit_native_enabled) && intJitShadow()) continue;
 #endif
         execI();
     }

@@ -2,7 +2,7 @@
 #include "jit_cache.h"
 #include <string.h>
 void revival_jit_cache_reset(struct revival_jit_cache *c) { memset(c,0,sizeof(*c)); }
-const struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
+struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
     uint32_t pc,const uint32_t *live,size_t avail,int *fresh) {
     struct revival_jit_slot *s;
     size_t n,k;
@@ -17,7 +17,7 @@ const struct revival_jit_slot *revival_jit_lookup(struct revival_jit_cache *c,
         }
         ++c->changed;
     }
-    ++c->misses;s->valid=0;
+    ++c->misses;s->valid=0;s->verified=0;
     /* Find the longest supported prefix. Each candidate emitter is bounded. */
     for(n=0;n<avail && revival_jit_supported(live[n]);++n) {}
     s->pc=pc;

@@ -42,18 +42,21 @@ void revival_perf_init(void) {
     if (fscanf(f, "%23s", mode) == 1) {
         if (!strcmp(mode, "single")) revival_perf_mode = REVIVAL_PERF_SINGLE;
         else if (!strcmp(mode, "uncapped")) revival_perf_mode = REVIVAL_PERF_UNCAPPED;
-        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore") || !strcmp(mode, "jitshadow")) {
+        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore") || !strcmp(mode, "jitshadow") || !strcmp(mode, "jitnative")) {
             revival_perf_mode = REVIVAL_PERF_SINGLE;
             revival_perf_direct = 1;
             if (!strcmp(mode, "half")) { sample_divisor = 2; selected_mode = "half"; }
             else if (!strcmp(mode, "ceiling")) { sample_divisor = 0; selected_mode = "ceiling"; }
-            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore") || !strcmp(mode, "jitshadow")) {
+            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore") || !strcmp(mode, "jitshadow") || !strcmp(mode, "jitnative")) {
                 sample_divisor = 2;
                 revival_jit_shadow_enabled = !strcmp(mode, "jitshadow");
-                revival_fastcore = revival_jit_shadow_enabled || !strcmp(mode, "fastcore");
+#ifdef REVIVAL_ENABLE_JIT_NATIVE
+                revival_jit_native_enabled = !strcmp(mode, "jitnative");
+#endif
+                revival_fastcore = revival_jit_shadow_enabled || revival_jit_native_enabled || !strcmp(mode, "jitnative") || !strcmp(mode, "fastcore");
                 revival_timer_fix = revival_fastcore || !strcmp(mode, "irqfix");
                 revival_cd_ack_fix = revival_timer_fix || !strcmp(mode, "bootfix");
-                selected_mode = revival_jit_shadow_enabled ? "jitshadow" : revival_fastcore ? "fastcore" : revival_timer_fix ? "irqfix" : revival_cd_ack_fix ? "bootfix" : "boottrace";
+                selected_mode = revival_jit_native_enabled ? "jitnative" : revival_jit_shadow_enabled ? "jitshadow" : revival_fastcore ? "fastcore" : revival_timer_fix ? "irqfix" : revival_cd_ack_fix ? "bootfix" : "boottrace";
             }
         }
         else if (!strcmp(mode, "native")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_native = 1; }
@@ -64,7 +67,7 @@ void revival_perf_init(void) {
 void revival_perf_begin(void) {
     FILE *f = fopen("PERF.CSV", "wb");
     if (!f) return;
-    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls,compiler_opt,jit_attempts,jit_blocks,jit_words,jit_mismatch,jit_hits,jit_misses,jit_changed,jit_rejected");
+    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls,compiler_opt,jit_attempts,jit_blocks,jit_words,jit_mismatch,jit_hits,jit_misses,jit_changed,jit_rejected,jit_native_blocks,jit_native_words,jit_native_audits,jit_native_enabled");
     revival_boot_header(f);
     fclose(f);
     samples = laces = vblanks = last_cycle = draw_phase = 0;

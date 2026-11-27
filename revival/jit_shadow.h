@@ -3,5 +3,6 @@
 #define REVIVAL_JIT_SHADOW_H
 #include <stdio.h>
 extern int revival_jit_shadow_enabled;
+extern int revival_jit_native_enabled;
 void revival_jit_shadow_snapshot(FILE *f);
 #endif

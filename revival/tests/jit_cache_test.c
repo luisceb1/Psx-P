@@ -5,16 +5,17 @@
 static struct revival_jit_cache c;
 int main(void) {
     uint32_t live[8]={0x24010001,0x24210001,0x24210001,0x24210001,0x08000000,0,0,0};
-    const struct revival_jit_slot *s,*again;
+    struct revival_jit_slot *s,*again;
     int fresh=-1;
     revival_jit_cache_reset(&c);
     s=revival_jit_lookup(&c,0x80010000,live,8,&fresh);
     assert(s && fresh && s->guest_count==4 && c.misses==1);
+    s->verified=3;
     again=revival_jit_lookup(&c,0x80010000,live,8,&fresh);
-    assert(again==s && !fresh && c.hits==1);
+    assert(again==s && !fresh && c.hits==1 && again->verified==3);
     live[2]=0x24210002;
     s=revival_jit_lookup(&c,0x80010000,live,8,&fresh);
-    assert(s && fresh && s->guest[2]==live[2] && c.changed==1);
+    assert(s && fresh && s->guest[2]==live[2] && c.changed==1 && s->verified==0);
     live[2]=0x08000000;
     assert(!revival_jit_lookup(&c,0x80010000,live,8,&fresh) && !fresh && c.rejected==1);
     assert(!revival_jit_lookup(&c,0x80010000,live,8,&fresh) && c.hits==2);

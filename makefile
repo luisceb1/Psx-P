@@ -76,7 +76,13 @@ REVIVAL_OPT_LEVEL = 1
 else
 $(error REVIVAL_OPT must be -Os or -O2)
 endif
-CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LEVEL=$(REVIVAL_OPT_LEVEL) -fsingle-precision-constant -funswitch-loops -fbranch-target-load-optimize2 -D__PSP__ -D_SDL
+REVIVAL_JIT_NATIVE ?= 0
+ifeq ($(REVIVAL_JIT_NATIVE),1)
+REVIVAL_JIT_FLAGS = -DREVIVAL_ENABLE_JIT_NATIVE
+else ifneq ($(REVIVAL_JIT_NATIVE),0)
+$(error REVIVAL_JIT_NATIVE must be 0 or 1)
+endif
+CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LEVEL=$(REVIVAL_OPT_LEVEL) $(REVIVAL_JIT_FLAGS) -fsingle-precision-constant -funswitch-loops -fbranch-target-load-optimize2 -D__PSP__ -D_SDL
 #-D_SDL2  
 
 #-D_OPENGL
@@ -97,7 +103,7 @@ LIBS = $(SDL_MIXER_LIB) $(SDL_PREFIX)/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSX-P Revival 0.0.12 perf test
+PSP_EBOOT_TITLE = PSX-P Revival 0.0.13 perf test
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak
