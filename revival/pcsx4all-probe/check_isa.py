@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 data = Path(sys.argv[1]).read_bytes()
 expected = {
-    "CLZ": 0x70000020 | (9 << 21) | (8 << 16) | (8 << 11),
+    "CLZ": 0x00000016 | (9 << 21) | (8 << 11),
     "MOVN": 0x0000000b | (9 << 21) | (10 << 16) | (8 << 11),
     "MOVZ": 0x0000000a | (9 << 21) | (10 << 16) | (8 << 11),
     "MULT": 0x00000018 | (9 << 21) | (10 << 16),
@@ -22,5 +22,6 @@ if len(data) < 4 * len(expected):
     raise SystemExit("Unexpected short text section")
 for i, (name, upstream) in enumerate(expected.items()):
     actual, = struct.unpack_from("<I", data, 4*i)
-    print(f"{name}: upstream={upstream:08x} allegrex={actual:08x} {'MATCH' if actual == upstream else 'DIFFERENT'}")
-# Diagnostic only: a mismatch is an explicit porting task, not a build failure.
+    print(f"{name}: candidate={upstream:08x} allegrex={actual:08x} {'MATCH' if actual == upstream else 'DIFFERENT'}")
+    if actual != upstream:
+        raise SystemExit("Candidate ISA mismatch: " + name)

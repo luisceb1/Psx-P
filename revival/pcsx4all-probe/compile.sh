@@ -44,5 +44,18 @@ if [ "$failed" -eq 0 ]; then
     done
     echo "=== Host ABI / ISA attributes ==="
     psp-readelf -h -A "$out/core-relocatable.o"
+    echo "=== Link isolated synthetic guest EBOOT ==="
+    for unit in guest_main platform_stubs; do
+        psp-g++ -std=gnu++11 -O2 -G0 -fno-rtti -fno-strict-aliasing \
+            -D__PSP__ -DPSXREC -DREVIVAL_PSP_PROBE \
+            -D'INLINE=static __inline__' -D'asm=__asm__ __volatile__' \
+            -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
+            -Isrc/gpu/gpu_unai -Isrc/spu/spu_pcsxrearmed \
+            -Dgpu_unai -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
+            -c "/revival/revival/pcsx4all-probe/guest-test/$unit.cpp" -o "$out/$unit.o"
+    done
+    make -C "$out" -f /revival/revival/pcsx4all-probe/guest-test/Makefile
+    test -s "$out/EBOOT.PBP"
+    sha256sum "$out/EBOOT.PBP"
 fi
 exit "$failed"

@@ -64,3 +64,36 @@ for macro in ("USE_CONST_DIV_OPTIMIZATIONS", "USE_CONST_MULT_OPTIMIZATIONS",
     m = m.replace(token, "/* PSP probe disables " + macro + " */\n", 1)
 mdu.write_text(m)
 print("Pinned source prepared; compile-only, not a runnable emulator")
+
+# Allegrex CLZ uses SPECIAL function 0x16; MIPS32 SPECIAL2 differs.
+h = root / "src/recompiler/mips/mips_codegen.h"
+header = h.read_text()
+old = "write32(0x70000020 | ((rs) << 21) | ((rd) << 16) | ((rd) << 11))"
+new = "write32(0x00000016 | ((rs) << 21) | ((rd) << 11))"
+if header.count(old) != 1:
+    raise SystemExit("Unexpected CLZ emitter")
+header = header.replace(old, new, 1)
+header = header.replace("#define HAVE_MIPS32_3OP_MUL\n", "/* No MIPS32 SPECIAL2 MUL on this candidate. */\n", 1)
+# Do not assume optional MIPS32r2 instruction encodings.
+for name in ("HAVE_MIPS32R2_EXT_INS", "HAVE_MIPS32R2_SEB_SEH", "HAVE_MIPS32R2_CACHE_OPS"):
+    token = "#define " + name
+    header = header.replace(token, "/* disabled " + name + " */", 1)
+h.write_text(header)
+# One bounded dispatcher entry for trusted synthetic blocks only.
+# No use of the unbounded production ExecuteBlock loop.
+with p.open("a") as out:
+    out.write("""
+extern "C" int revival_pcsx4all_probe_one(void)
+{
+    if (psxRegs.pc != 0x80010000u || psxRegs.cycle >= psxRegs.io_cycle_counter)
+        return 0;
+    block_ret_addr = block_fast_ret_addr = 0;
+    u32 *entry = (u32*)PC_REC(psxRegs.pc);
+    if (!*entry) recRecompile();
+    if ((uptr)*entry < (uptr)recMemBase ||
+        (uptr)*entry >= (uptr)recMem || (*entry & 3u))
+        return 0;
+    recFunc((void*)(uptr)*entry);
+    return 1;
+}
+""")
