@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+concurrency:
+  group: legacy-baseline-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
