@@ -1,0 +1,22 @@
+diff --git a/src/video/psp/SDL_pspevents.c b/src/video/psp/SDL_pspevents.c
+--- a/src/video/psp/SDL_pspevents.c
++++ b/src/video/psp/SDL_pspevents.c
+@@ -51,1 +51,1 @@
+-static enum PspHprmKeys hprm = 0;
++static u32 hprm = 0;
+diff --git a/src/thread/psp/SDL_syssem.c b/src/thread/psp/SDL_syssem.c
+--- a/src/thread/psp/SDL_syssem.c
++++ b/src/thread/psp/SDL_syssem.c
+@@ -86,3 +86,4 @@
+ {
+-	Uint32 *pTimeout;
+-       unsigned int res;
++	SceUInt wait_us;
++	SceUInt *pTimeout;
++	int res;
+@@ -106,3 +107,3 @@
+-		timeout *= 1000;  /* Convert to microseconds. */
+-		pTimeout = &timeout;
++		wait_us = (SceUInt)(timeout * 1000U); /* Convert to microseconds. */
++		pTimeout = &wait_us;
+ 	}

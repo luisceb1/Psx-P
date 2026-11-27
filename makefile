@@ -58,7 +58,11 @@ PSP_EBOOT_PIC1 = NULL
 
 PSPBIN = $(shell psp-config --psp-prefix)/bin
 
-INCDIR = ./revival ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL ./SDL_PSP_LIB_BUILD/include/SDL
+INCDIR = ./revival ./PSP ./PCSX_CORE ./PSX-CDROM ./MIPS_JIT_R4000 ./GPU_SOFT_SDL 
+# Explicit selection: historical baseline or pinned source-built SDL.
+SDL_PREFIX ?= ./SDL_PSP_LIB_BUILD
+SDL_MIXER ?= 0
+INCDIR += $(SDL_PREFIX)/include/SDL
 ## Legacy C dialect and tentative global definitions in PCSX headers.
 CFLAGS = -std=gnu99 -fgnu89-inline -fcommon -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
 #-D_SDL2  
@@ -74,7 +78,10 @@ ASFLAGS = $(CFLAGS)
 LIBDIR =
 LDFLAGS = 
 # Dependent libraries first; PSPSDK and compiler supply the base system libraries last.
-LIBS = ./SDL_PSP_LIB_BUILD/lib/libSDL_mixer.a ./SDL_PSP_LIB_BUILD/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -lpspgu -lpsputility -lpsphprm -lpsppower -lpsprtc -lpspaudio
+ifeq ($(SDL_MIXER),1)
+SDL_MIXER_LIB = $(SDL_PREFIX)/lib/libSDL_mixer.a
+endif
+LIBS = $(SDL_MIXER_LIB) $(SDL_PREFIX)/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -lpspgu -lpsputility -lpsphprm -lpsppower -lpsprtc -lpspaudio -lpspnet_inet
 
 
 EXTRA_TARGETS = EBOOT.PBP
