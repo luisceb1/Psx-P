@@ -476,6 +476,8 @@ static void video_test(){
     video_mode(0x10);
     mark("GU RGB24 staged",video_submit(256,240,0x801f,0xffe0));
 }
+static bool native_disc_valid=false;
+static u32 native_disc_pc=0,native_disc_regs[32],native_disc_cycles=0;
 static bool fresh_disc=false;
 static bool cd_ack(unsigned expected){
     psxMemWrite8(0x1f801800,1);
@@ -606,6 +608,7 @@ static void disc_boot_test(){
         // Keep baseline synthetic HLE execution available on admission
         // failure; no external guest code is ever selected.
 
+        const u32 native_cycle_start=psxRegs.cycle;
         unsigned blocks=0;bool loop_ok=false;
         while(psxRegs.pc!=0x80010070u && blocks<20010){
             if(psxRegs.pc==0x80010040u)loop_ok=psxRegs.GPR.r[1]==0&&psxRegs.GPR.r[2]==20000&&psxRegs.GPR.r[3]==20000;
@@ -619,8 +622,97 @@ static void disc_boot_test(){
         if(report){fprintf(report,"Disc native blocks,%u\n",blocks);fflush(report);}
         GPU_updateLace();
         mark("Disc guest GPU output",gpu.vram[0]==0x001f);
+        native_disc_valid=loop_ok&&psxRegs.pc==0x80010070u&&gpu.vram[0]==0x001f
+            &&gpu.vram[239*1024+255]==0x001f;
+        native_disc_pc=psxRegs.pc;
+        memcpy(native_disc_regs,psxRegs.GPR.r,sizeof(native_disc_regs));
+        native_disc_cycles=psxRegs.cycle-native_cycle_start;
     }
     CDR_close();CDR_shutdown();Config.HLE=FALSE;
+}
+// Direct synthetic boot, independent of the upstream HLE loader opcode.
+// A successful result is not evidence that an arbitrary game can execute.
+static RunStop run_disc_phase(u32 begin,u32 end,u32 limit,u32 &dispatches,u64 began){
+    const unsigned slice_budget=256;
+    dispatches=0;
+    while(dispatches<limit){
+        if(cancel_pressed())return RUN_CANCEL;
+        if(sceKernelGetSystemTimeWide()-began>=8000000ULL)return RUN_TIMEOUT;
+        unsigned budget=limit-dispatches;
+        if(budget>slice_budget)budget=slice_budget;
+        RunStop stop=run_slice(false,begin,end,budget,dispatches);
+        if(stop!=RUN_YIELD)return stop;
+        sceKernelDelayThread(1);
+    }
+    return RUN_LIMIT;
+}
+static void direct_disc_test(){
+    if(!fresh_disc){mark("Direct disc stage",false);return;}
+    rv_load_staged staged={};
+    FILE *f=fopen("REVIVAL_BOOT.bin","rb");
+    int rc=f?rv_load_stage(f,&staged):RV_PF_IO;
+    if(f&&fclose(f))rc=RV_PF_IO;
+    bool staged_ok=rc==RV_PF_OK&&staged.meta.sectors==32&&staged.meta.exe_lba==23
+        &&staged.meta.pc==start&&staged.meta.text_addr==start
+        &&staged.meta.sp==0x801fff00u&&staged.payload_bytes==2048
+        &&!memcmp(staged.payload,data(24),2048);
+    mark("Direct disc stage",staged_ok);
+    if(!staged_ok){rv_load_discard(&staged);return;}
+    // Real reset initializes HLE vectors but does not execute the bootstrap.
+    // GPU display policy is set explicitly rather than via fake_bios_gpu_setup.
+    Config.HLE=TRUE;Config.Cpu=CPU_INTERPRETER;psxCpu=&psxInt;
+    psxReset();
+    psxMemWrite32(0x1f801074,0);
+    psxMemWrite32(0x1f801070,0);
+    GPU_writeStatus(0x00000000);
+    memset(gpu.vram,0,1024*512*2);
+    video_mode(0);
+    // A sentinel demonstrates that the direct reader, not the old HLE
+    // loader, initializes text. Do not run if the new commit fails.
+    memset(psxM+0x10000,0xa5,2048);
+    const u32 left=psxMu32(0xfffc),right=psxMu32(0x10800);
+    rv_pf_result committed={};
+    rc=rv_load_commit(&staged,(unsigned char *)psxM,0x200000,&committed);
+    bool copied=rc==RV_PF_OK&&!memcmp(psxM+0x10000,data(24),2048)
+        &&psxMu32(0xfffc)==left&&psxMu32(0x10800)==right;
+    mark("Direct disc RAM load",copied);
+    rv_load_discard(&staged);
+    if(!copied){Config.HLE=FALSE;return;}
+    psxCpu->Clear(committed.text_addr,committed.text_bytes/4);
+    psxRegs.pc=committed.pc;
+    psxRegs.GPR.n.gp=committed.gp;
+    psxRegs.GPR.n.sp=committed.sp;
+    bool regs=psxRegs.pc==start&&psxRegs.GPR.n.gp==0&&psxRegs.GPR.n.sp==0x801fff00u;
+    mark("Direct disc entry registers",regs);
+    if(!regs){Config.HLE=FALSE;return;}
+    const u64 began=sceKernelGetSystemTimeWide();
+    const u32 cycle_start=psxRegs.cycle;
+    u32 loop_dispatches=0,draw_dispatches=0;
+    RunStop loop=run_disc_phase(start,0x80010040u,100000,loop_dispatches,began);
+    bool loop_ok=loop==RUN_TARGET&&psxRegs.GPR.r[1]==0&&psxRegs.GPR.r[2]==20000
+        &&psxRegs.GPR.r[3]==20000&&psxRegs.GPR.r[0]==0;
+    mark("Direct disc interpreter loop",loop_ok);
+    RunStop draw=loop_ok?run_disc_phase(0x80010040u,0x80010070u,64,draw_dispatches,began):RUN_REJECT;
+    bool stopped=draw==RUN_TARGET&&psxRegs.pc==0x80010070u;
+    mark("Direct disc interpreter completion",stopped);
+    unsigned before=probe_presentations;
+    GPU_requestScreenRedraw();GPU_updateLace();
+    mark("Direct disc VRAM output",stopped&&pixels());
+    mark("Direct disc GU presentation",stopped&&probe_presentations>before);
+    bool parity=stopped&&native_disc_valid&&native_disc_pc==psxRegs.pc
+        &&native_disc_regs[0]==psxRegs.GPR.r[0]
+        &&native_disc_regs[1]==psxRegs.GPR.r[1]&&native_disc_regs[2]==psxRegs.GPR.r[2]
+        &&native_disc_regs[3]==psxRegs.GPR.r[3]&&native_disc_regs[28]==psxRegs.GPR.n.gp
+        &&native_disc_regs[29]==psxRegs.GPR.n.sp&&gpu.vram[0]==0x001f
+        &&gpu.vram[239*1024+255]==0x001f;
+    mark("Direct disc native result parity",parity);
+    if(report){
+        fprintf(report,"Direct disc runner,loop=%s,draw=%s,dispatches=%lu/%lu,cycles=%lu,native_cycles=%lu,us=%llu\n",
+            run_name(loop),run_name(draw),(unsigned long)loop_dispatches,(unsigned long)draw_dispatches,
+            (unsigned long)(psxRegs.cycle-cycle_start),(unsigned long)native_disc_cycles,
+            (unsigned long long)(sceKernelGetSystemTimeWide()-began));fflush(report);
+    }
+    Config.HLE=FALSE;
 }
 #endif
 int main(){
@@ -712,6 +804,8 @@ int main(){
     pad_test();
     if(report){fprintf(report,"Video extension begin\n");fflush(report);}
     video_test();
+    if(report){fprintf(report,"Direct disc extension begin\n");fflush(report);}
+    direct_disc_test();
     SPUclose();SPUshutdown();
 #endif
     if(report)fclose(report);
