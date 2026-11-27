@@ -194,3 +194,15 @@ psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -c /revival/revival/storage.c -o "$o
 make -C "$out" -f /revival/revival/pcsx4all-probe/inspect-test/Makefile
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Independent native output + genuine SPU mixer probe. Full null-SPU EBOOT unchanged.
+out=$(dirname "$out")/audio-test
+mkdir -p "$out"
+cp "$spuout/spu-relocatable.o" "$out/"
+for unit in audio_main audio_psp; do
+    psp-gcc -std=gnu99 -O2 -G0 -I"$sdk/include" -Isrc/spu/spu_pcsxrearmed \
+        -c "/revival/revival/pcsx4all-probe/audio-test/$unit.c" -o "$out/$unit.o"
+done
+make -C "$out" -f /revival/revival/pcsx4all-probe/audio-test/Makefile
+test -s "$out/EBOOT.PBP"
+sha256sum "$out/EBOOT.PBP"
