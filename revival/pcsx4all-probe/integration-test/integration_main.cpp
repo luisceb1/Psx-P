@@ -296,7 +296,7 @@ static bool cancel_pressed(){
         (pad.Buttons&(PSP_CTRL_START|PSP_CTRL_SELECT))==(PSP_CTRL_START|PSP_CTRL_SELECT);
 }
 struct RunResult { RunStop stop; bool yielded; u32 pc,cycle,gpr[32],frames,dispatches,slices; u64 us; };
-static RunStop run_slice(bool native,u32 begin,u32 end,unsigned budget,unsigned &count){
+static RunStop run_slice(bool native,u32 begin,u32 end,unsigned budget,u32 &count){
     for(unsigned i=0;i<budget;i++){
         if(psxRegs.pc==end)return RUN_TARGET;
         if(psxRegs.cycle>=psxRegs.io_cycle_counter)psxBranchTest();
