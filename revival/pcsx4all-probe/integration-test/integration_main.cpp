@@ -129,6 +129,26 @@ static void exe_test(){
     mark("PS-X EXE execution",ran&&psxRegs.pc==end_pc&&pixels());
 }
 #endif
+#ifdef REVIVAL_HLE_INTEGRATION
+static void hle_test(){
+    Config.HLE=TRUE;
+    Config.Cpu=CPU_DYNAREC;
+    // Real reset path; no BIOS file, no disc bootstrap execution yet.
+    psxCpu=&psxRec;
+    psxReset();
+    mark("HLE reset",psxRegs.pc==0xbfc00000u && psxRegs.CP0.r[12]==0x10900000u && psxRegs.writeok);
+    mark("HLE vectors",psxRu32(0)==0xec000004u && psxMu32(0xa0)==0xec000001u && psxMu32(0xb0)==0xec000002u && psxMu32(0xc0)==0xec000003u);
+    // A0 strlen through actual HLE opcode and interpreter, not a direct C call.
+    memcpy(psxM+0x20000,"REVIVAL",8);
+    psxRegs.pc=0x800000a0u;
+    psxRegs.GPR.n.a0=0x80020000u;
+    psxRegs.GPR.n.t1=0x1b;
+    psxRegs.GPR.n.ra=0x80010030u;
+    execI();
+    mark("HLE A0 strlen",psxRegs.GPR.n.v0==7 && psxRegs.pc==0x80010030u);
+    Config.HLE=FALSE;
+}
+#endif
 int main(){
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_INTEGRATION.TXT","w");
@@ -155,6 +175,9 @@ int main(){
 #endif
 #ifdef REVIVAL_EXE_INTEGRATION
     exe_test();
+#endif
+#ifdef REVIVAL_HLE_INTEGRATION
+    hle_test();
 #endif
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);

@@ -28,11 +28,13 @@ char CdromId[10]={0};
 #endif
 struct pl_data_t pl_data={};
 static void trap(void) { STOP; }
+#ifndef REVIVAL_HLE_INTEGRATION
 void (*biosA0[256])(void)={trap};
 void (*biosB0[256])(void)={trap};
 void (*biosC0[256])(void)={trap};
 void (*psxHLEt[256])(void)={trap};
 V0(psxBiosInit) V0(psxBiosShutdown) V0(psxBiosException)
+#endif
 #ifndef REVIVAL_GPU_INTEGRATION
 V0(psxHwReset)
 u8 psxHwRead8(u32) { STOP; }
@@ -42,12 +44,16 @@ void psxHwWrite8(u32,u8) { STOP; }
 void psxHwWrite16(u32,u16) { STOP; }
 void psxHwWrite32(u32,u32) { STOP; }
 #else
+#ifndef REVIVAL_HLE_INTEGRATION
 V0(mdecInit) V0(sioInit)
+#endif
 #ifndef REVIVAL_CD_INTEGRATION
 V0(cdrReset)
 #endif
+#ifndef REVIVAL_HLE_INTEGRATION
 void psxDma0(u32,u32,u32){STOP;}
 void psxDma1(u32,u32,u32){STOP;}
+#endif
 #ifndef REVIVAL_CD_INTEGRATION
 void psxDma3(u32,u32,u32){STOP;}
 #endif
@@ -72,6 +78,7 @@ V0(gpuInterrupt) V0(spuInterrupt) V0(gpuotcInterrupt)
 void CALLBACK SPUwriteDMAMem(unsigned short*,int,unsigned int){STOP;}
 void CALLBACK SPUreadDMAMem(unsigned short*,int,unsigned int){STOP;}
 #endif
+#ifndef REVIVAL_HLE_INTEGRATION
 V0(mdec0Interrupt) V0(mdec1Interrupt)
 V1(mdecWrite0,u32) V1(mdecWrite1,u32)
 R0(u32,mdecRead0) R0(u32,mdecRead1)

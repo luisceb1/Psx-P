@@ -107,3 +107,30 @@ done
 make -C "$out" -f /revival/revival/pcsx4all-probe/integration-test/Makefile CD_INTEGRATION=1 EXE_INTEGRATION=1
 test -s "$out/EBOOT.PBP"
 sha256sum "$out/EBOOT.PBP"
+
+# Preserve EXE candidate, link the remaining HLE/MDEC/SIO/PAD units separately.
+exeout=$out
+out=$(dirname "$out")/hle-test
+mkdir -p "$out"
+for obj in core-relocatable gpu_core gpu_unai integration_vout dma_core hw_core cd_iso cd_ppf cd_controller cd_xa exe_loader; do
+    cp "$exeout/$obj.o" "$out/"
+done
+compile src/psxbios.cpp bios_core
+compile src/psxhle.cpp hle_core
+compile src/mdec.cpp mdec_core
+compile src/sio.cpp sio_core
+compile src/pad.cpp pad_core
+for pair in "guest-test/platform_stubs.cpp:integration_cd_stubs" "integration-test/integration_main.cpp:integration_cd_main"; do
+    unit=${pair%:*}
+    name=${pair#*:}
+    psp-g++ -std=gnu++11 -O2 -G0 -fno-rtti -fno-strict-aliasing \
+        -D__PSP__ -DPSXREC -DREVIVAL_PSP_PROBE -DREVIVAL_GPU_INTEGRATION -DREVIVAL_CD_INTEGRATION -DREVIVAL_EXE_INTEGRATION -DREVIVAL_HLE_INTEGRATION \
+        -D'INLINE=static __inline__' -D'asm=__asm__ __volatile__' \
+        -I"$sdk/include" -Isrc -Isrc/port/sdl -Isrc/plugin_lib \
+        -Isrc/gpu/gpu_unai -Isrc/spu/spu_pcsxrearmed \
+        -DGPU_UNAI -Dspu_pcsxrearmed -DSPU_PCSXREARMED -DUSE_GPULIB \
+        -c "/revival/revival/pcsx4all-probe/$unit" -o "$out/$name.o"
+done
+make -C "$out" -f /revival/revival/pcsx4all-probe/integration-test/Makefile CD_INTEGRATION=1 EXE_INTEGRATION=1 HLE_INTEGRATION=1
+test -s "$out/EBOOT.PBP"
+sha256sum "$out/EBOOT.PBP"

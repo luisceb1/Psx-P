@@ -8,6 +8,10 @@ ifeq ($(EXE_INTEGRATION),1)
 OBJS += exe_loader.o
 TARGET = pcsx4all_exe_probe
 endif
+ifeq ($(HLE_INTEGRATION),1)
+OBJS += bios_core.o hle_core.o mdec_core.o sio_core.o pad_core.o
+TARGET = pcsx4all_hle_probe
+endif
 CFLAGS = -O2 -G0
 LIBS = -lstdc++ -lpspgu -lpspge -lpspdisplay
 ifeq ($(CD_INTEGRATION),1)
