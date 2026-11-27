@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Compile independently to expose all failures, never link or execute guest code.
+# Compile and link synthetic probes, never execute guest code in CI.
 set -eu
 root="$1"
 out="$2"
@@ -57,5 +57,6 @@ if [ "$failed" -eq 0 ]; then
     make -C "$out" -f /revival/revival/pcsx4all-probe/guest-test/Makefile
     test -s "$out/EBOOT.PBP"
     sha256sum "$out/EBOOT.PBP"
+    sh /revival/revival/pcsx4all-probe/compile-gpu.sh "$root" "$out/gpu-test"
 fi
 exit "$failed"
