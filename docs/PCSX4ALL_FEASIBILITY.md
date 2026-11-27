@@ -1,0 +1,22 @@
+# PCSX4ALL feasibility — 2026-11-27
+
+This is a separate investigation based on main 04796217abf41224492ebb26d346c038602d7add. The old CPU and PRs 10/11 are untouched. No runnable emulator is produced, no third-party source is committed, no game/BIOS/saves or binary artifacts.
+
+## Evidence and provenance
+
+Upstream https://github.com/dmitrysmagin/pcsx4all/tree/c7faf12b893eba94faced88baa5e7dd059be58b7 (2019-02-19), PCSX4ALL 2.4. Root gpl.txt, GPL-2.0-or-later notices in r3000a.cpp, psxevents.cpp, psxcounters.cpp; MIT-style notice in recompiler.cpp and mem_mapping.cpp; GPL-2.0-or-later in host_asm.S; mips_codegen.cpp includes explicitly GPLv2-derived functions. Per-file audit of GPU/SPU/assets/ports still required. Preserve attribution and original history for any eventual vendoring; no release clearance.
+
+- psxcommon.h defines PSXCLK 33868800, psxinterpreter.cpp advances cycles per instruction, psxevents.cpp schedules events and rebases timestamps; psxcounters.cpp derives VBlank and root counters from cycle deadlines. This is a more coherent starting point, not verified cycle accuracy. Do not mix with the old branch-count cycle model.
+- recompiler.cpp supports register allocation, constants, code invalidation, block returns and non-virtual pointer LUT; mem_mapping.cpp contains existing non-mmap stubs. PSP can initially use these, not Linux SHMEM/TMPFS or mapping at address zero.
+- Host cache maintenance uses Linux cacheflush or MIPS32r2 synci/rdhwr; PSP adaptation uses sceKernelDcacheWritebackInvalidateRange then sceKernelIcacheInvalidateRange.
+- Original code arena 12 MiB plus 2.5 MiB block-pointer arrays and 256 KiB LUT for 32-bit pointers; probe reduces arena to 4 MiB, preserves 512 KiB reserve. No proof of runtime fit or safe emission yet.
+- Probe intentionally disables inline assembly dispatcher, direct-return jumps, fastpath jumps and direct memory access initially. Do not benchmark this conservative configuration as a finished port. Audit remaining generated opcodes, ABI, address region reachability, load delay, exception semantics, SMC and DMA invalidation before executing generated code.
+- GPU Unai + GPULib and ReARMed SPU are upstream components. GU probe is only a textured presentation API compilation check; exact PS1 rasterization requires tests for mask bits, texture windows, dithering, semi-transparency, ordering, VRAM readback, format and synchronization. A host GPU is not automatically a correct PS1 GPU.
+
+## Gates
+
+1. Compile isolated CPU, scheduler, memory, GTE and MIPS recompiler units with PSPSDK. Record exact source SHA and SDK image digest. Inspect individual failures. No linking, runtime or speed claim.
+2. Build independent synthetic test executable with no BIOS/game. Validate guest ALU, branch/load delay, RAM mirrors, event delivery and cache/ABI; compare interpreter and recompiler with the same core.
+3. Link a minimal PSP platform port; measure memory, use isolated blank storage and retain fallback interpreter. Only then consider physical testing.
+4. Add disc and frontend adapters, GPU and SPU. Benchmark fixed workloads with guest frame/event counts and elapsed wall time. Compare against original fastcore separately.
+5. Consider GU rasterization or VFPU only after identifying bottleneck. Do not change original BIAS/VSync or merge experimental code prematurely.

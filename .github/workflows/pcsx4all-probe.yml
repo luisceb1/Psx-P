@@ -1,0 +1,48 @@
+name: PCSX4ALL PSP feasibility
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'revival/pcsx4all-probe/**'
+      - '.github/workflows/pcsx4all-probe.yml'
+permissions:
+  contents: read
+jobs:
+  compile-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch exact upstream and prepare disposable source
+        run: |
+          set -eux
+          git init /tmp/pcsx4all
+          git -C /tmp/pcsx4all remote add origin https://github.com/dmitrysmagin/pcsx4all.git
+          git -C /tmp/pcsx4all fetch --depth 1 origin c7faf12b893eba94faced88baa5e7dd059be58b7
+          git -C /tmp/pcsx4all checkout --detach FETCH_HEAD
+          python3 revival/pcsx4all-probe/prepare.py /tmp/pcsx4all
+          git -C /tmp/pcsx4all diff > pcsx4all-adaptation.diff
+      - name: Compile core and MIPS backend independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull pspdev/pspdev:latest
+          docker image inspect --format '{{index .RepoDigests 0}}' pspdev/pspdev:latest > pcsx4all-probe.log
+          docker run --rm -v /tmp/pcsx4all:/upstream:ro -v "$PWD:/revival:ro" pspdev/pspdev:latest sh /revival/revival/pcsx4all-probe/compile.sh /upstream /tmp/probe-objects 2>&1 | tee -a pcsx4all-probe.log
+      - name: Compile native GU API probe
+        if: always()
+        shell: bash
+        run: |
+          set -o pipefail
+          docker run --rm -v "$PWD:/revival:ro" pspdev/pspdev:latest sh -c 'psp-gcc -std=gnu99 -Wall -Wextra -Werror -O2 -c /revival/revival/pcsx4all-probe/gu_probe.c -o /tmp/gu.o; psp-size /tmp/gu.o' 2>&1 | tee gu-probe.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pcsx4all-probe-diagnostics
+          path: |
+            pcsx4all-probe.log
+            pcsx4all-adaptation.diff
+            gu-probe.log
+          if-no-files-found: warn
