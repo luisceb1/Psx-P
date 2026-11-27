@@ -24,7 +24,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
-#include "psxcommon.h"
+#include "PsxCommon.h"
 #include "Sio.h"
 #include "log.h"
 #include "png.h"
