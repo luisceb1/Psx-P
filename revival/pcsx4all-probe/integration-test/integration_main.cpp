@@ -6,6 +6,18 @@
 #include "r3000a.h"
 #include "psxevents.h"
 #include "psxdma.h"
+#ifdef REVIVAL_SPU_INTEGRATION
+extern "C" {
+#include "spu_config.h"
+}
+#include "plugin_lib.h"
+static void CALLBACK probe_spu_irq(){psxHu32ref(0x1070)|=SWAPu32(0x200);ResetIoCycle();}
+static void CALLBACK probe_spu_schedule(unsigned int cycles){
+    if(Config.SpuUpdateFreq>0 && Config.SpuUpdateFreq<=SPU_UPDATE_FREQ_MAX)cycles>>=Config.SpuUpdateFreq;
+    if(pl_frameskip_advice())cycles>>=1;
+    psxEvqueueAdd(PSXINT_SPUIRQ,cycles);
+}
+#endif
 #ifdef REVIVAL_CD_INTEGRATION
 #include "cdrom.h"
 #ifdef REVIVAL_EXE_INTEGRATION
@@ -155,6 +167,15 @@ int main(){
     memset(&Config,0,sizeof(Config));Config.Cpu=CPU_DYNAREC;
     if(psxInit()<0){mark("CPU init",false);sceKernelExitGame();return 1;}
     mark("CPU init",true);
+#ifdef REVIVAL_SPU_INTEGRATION
+    memset(&spu_config,0,sizeof(spu_config));
+    spu_config.iHaveConfiguration=1;spu_config.iDisabled=1;
+    spu_config.iVolume=768;spu_config.iUseInterpolation=2;
+    bool sound=SPUinit()==0 && SPUopen()==0;
+    mark("SPU init null backend",sound);
+    if(!sound){if(report)fclose(report);sceKernelExitGame();return 1;}
+    SPUregisterCallback(probe_spu_irq);SPUregisterScheduleCb(probe_spu_schedule);
+#endif
     if(GPU_init()!=0 || !gpu.vram){mark("GPU init",false);sceKernelExitGame();return 1;}
     mark("GPU init",true);
     setup(&psxInt);
@@ -178,6 +199,13 @@ int main(){
 #endif
 #ifdef REVIVAL_HLE_INTEGRATION
     hle_test();
+#endif
+#ifdef REVIVAL_SPU_INTEGRATION
+    psxMemWrite16(0x1f801daa,0x8000);
+    mark("SPU MMIO control",(psxMemRead16(0x1f801daa)&0x8000)!=0);
+    SPUasync(psxRegs.cycle,1);
+    mark("SPU update returned",true);
+    SPUclose();SPUshutdown();
 #endif
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);

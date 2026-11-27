@@ -183,3 +183,10 @@ for old,new in (("(uint32_t *)malloc(44100 * sizeof(uint32_t))", "(unsigned int 
         raise SystemExit("Unexpected SPU ring allocation")
     s = s.replace(old,new,1)
 spu.write_text(s)
+
+# Keep gettimeofday for XA, disable only POSIX worker on PSP.
+s = spu.read_text()
+old = "#define THREAD_ENABLED 1"
+if s.count(old) != 1:
+    raise SystemExit("Unexpected SPU thread define")
+spu.write_text(s.replace(old, "#ifndef __PSP__\n#define THREAD_ENABLED 1\n#endif",1))

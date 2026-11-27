@@ -69,14 +69,18 @@ V1(cdrWrite2,unsigned char) V1(cdrWrite3,unsigned char)
 #ifndef REVIVAL_EXE_INTEGRATION
 int CheckCdrom(void){STOP;}
 #endif
+#ifndef REVIVAL_SPU_INTEGRATION
 void CALLBACK SPUplayADPCMchannel(xa_decode_t*){STOP;}
 unsigned int CALLBACK SPUgetADPCMBufferRoom(void){STOP;}
+#endif
 #endif
 #ifndef REVIVAL_GPU_INTEGRATION
 V0(gpuInterrupt) V0(spuInterrupt) V0(gpuotcInterrupt)
 #else
+#ifndef REVIVAL_SPU_INTEGRATION
 void CALLBACK SPUwriteDMAMem(unsigned short*,int,unsigned int){STOP;}
 void CALLBACK SPUreadDMAMem(unsigned short*,int,unsigned int){STOP;}
+#endif
 #endif
 #ifndef REVIVAL_HLE_INTEGRATION
 V0(mdec0Interrupt) V0(mdec1Interrupt)
@@ -96,8 +100,10 @@ V0(GPU_updateLace) R0(uint32_t,GPU_readData) R0(uint32_t,GPU_readStatus)
 V1(GPU_writeData,uint32_t)
 void GPU_vBlank(int,int) { STOP; }
 #endif
+#ifndef REVIVAL_SPU_INTEGRATION
 void CALLBACK SPUasync(uint32_t,uint32_t) { STOP; }
 unsigned short CALLBACK SPUreadRegister(unsigned long) { STOP; }
 void CALLBACK SPUwriteRegister(unsigned long,unsigned short,unsigned int) { STOP; }
+#endif
 V0(EmuUpdate)
 int freeze_rw(void*,enum FreezeMode,void*,unsigned) { STOP; }

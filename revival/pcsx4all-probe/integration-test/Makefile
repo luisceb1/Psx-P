@@ -12,6 +12,10 @@ ifeq ($(HLE_INTEGRATION),1)
 OBJS += bios_core.o hle_core.o mdec_core.o sio_core.o pad_core.o
 TARGET = pcsx4all_hle_probe
 endif
+ifeq ($(SPU_INTEGRATION),1)
+OBJS += spu-relocatable.o
+TARGET = pcsx4all_full_probe
+endif
 CFLAGS = -O2 -G0
 LIBS = -lstdc++ -lpspgu -lpspge -lpspdisplay
 ifeq ($(CD_INTEGRATION),1)
