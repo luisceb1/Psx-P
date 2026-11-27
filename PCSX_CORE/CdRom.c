@@ -21,6 +21,7 @@
 #include <stdarg.h>
 //THIS ALL IS FOR THE CDROM REGISTERS HANDLING
 #include "PsxCommon.h"
+#include "boottrace.h"
 
 #define CdlSync         0
 #define CdlNop	        1
@@ -146,6 +147,7 @@ void ReadTrack() {
 #define DiskError	5
 
 void AddIrqQueue(unsigned char irq, unsigned long ecycle) {
+	++revival_cd_trace.queued;
 	cdr.Irq = irq;
 	if (cdr.Stat) {
 		cdr.eCycle = ecycle;
@@ -163,6 +165,8 @@ void cdrInterrupt() {
 		return;
 	}
 
+	++revival_cd_trace.delivered;
+	revival_cd_trace.last_irq = Irq;
 	cdr.Irq = 0xff;
 	cdr.Ctrl&=~0x80;
 
@@ -594,6 +598,7 @@ void cdrReadInterrupt() {
 
 	memcpy(cdr.Transfer, buf, 2340);
     cdr.Stat = DataReady;
+    ++revival_cd_trace.data_ready;
 
 #ifdef CDR_LOG
 	fprintf(emuLog, " %x:%x:%x\n", cdr.Transfer[0], cdr.Transfer[1], cdr.Transfer[2]);
@@ -717,6 +722,8 @@ void cdrWrite1(unsigned char rt) {
 #endif
 
 	if (cdr.Ctrl & 0x1) return;
+	++revival_cd_trace.commands;
+	revival_cd_trace.last_cmd = rt;
 
     switch(cdr.Cmd) {
     	case CdlSync:
@@ -985,8 +992,13 @@ void cdrWrite3(unsigned char rt) {
 #ifdef CDR_LOG
 	CDR_LOG("CD3 write: %x\n", rt);
 #endif
-    if (rt == 0x07 && cdr.Ctrl & 0x1) {
-		cdr.Stat = 0;
+    if (cdr.Ctrl & 0x1) {
+        ++revival_cd_trace.ack_writes;
+        revival_cd_trace.last_ack = rt;
+    }
+    if ((rt == 0x07 || (revival_cd_ack_fix && (rt & 7) == 7)) && (cdr.Ctrl & 0x1)) {
+        ++revival_cd_trace.ack_accepted;
+        cdr.Stat = 0;
 
 		if (cdr.Irq == 0xff) { cdr.Irq = 0; return; }
         if (cdr.Irq) CDR_INT(cdr.eCycle);
