@@ -7,7 +7,8 @@
 #include "gpu/gpulib/gpu.h"
 PSP_MODULE_INFO("PCSX4ALL GPU probe",0,1,0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
-extern unsigned probe_presentations, probe_blanks;
+extern unsigned probe_presentations, probe_blanks, probe_unsupported;
+extern uint64_t probe_present_us;
 static FILE *report;
 static void check(const char *name,bool ok)
 {
@@ -21,7 +22,7 @@ int main()
 {
     pspDebugScreenInit();
     report=fopen("PCSX4ALL_GPU.TXT","w");
-    if(report){fprintf(report,"PCSX4ALL GPU probe v1\n");fflush(report);}
+    if(report){fprintf(report,"PCSX4ALL GPU probe v2\n");fflush(report);}
     gpu_unai_config_ext.lighting=1;
     gpu_unai_config_ext.blending=1;
     gpu_unai_config_ext.dithering=1;
@@ -47,9 +48,18 @@ int main()
     gp0(0x6000ff00);gp0(xy(128,64));gp0(xy(8,4));
     GPU_updateLace();
     check("Rectangle raster",pixel(128,64)==0x03e0 && pixel(135,67)==0x03e0 && pixel(136,64)==0);
+    // Draw three bands using real GP0 fills; keep test image visible.
+    gp0(0x020000ff);gp0(xy(0,0));gp0(xy(256,80));
+    gp0(0x0200ff00);gp0(xy(0,80));gp0(xy(256,80));
+    gp0(0x02ff0000);gp0(xy(0,160));gp0(xy(256,80));
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
-    check("Presentation callback",probe_presentations>0);
+    bool bands=pixel(10,10)==0x001f && pixel(10,90)==0x03e0 && pixel(10,170)==0x7c00;
+    // Avoid debug screen drawing over the GU framebuffer after presentation.
+    if(report){
+        fprintf(report,"Color bars VRAM,%s\nGU submission,%s\npresentations,%u\nunsupported,%u\npresent_us_excluding_vblank,%llu\n",bands?"PASS":"FAIL",probe_presentations>0?"PASS":"FAIL",probe_presentations,probe_unsupported,(unsigned long long)probe_present_us);
+        fclose(report);
+    }
+    sceKernelDelayThread(10000000);
     GPU_shutdown();
-    if(report)fclose(report);
-    sceKernelDelayThread(10000000);sceKernelExitGame();return 0;
+    sceKernelExitGame();return 0;
 }
