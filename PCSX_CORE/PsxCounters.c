@@ -118,6 +118,9 @@ void psxRcntInit() {
 	} else cnts = 4;
 
 	psxRcntUpd(0); psxRcntUpd(1); psxRcntUpd(2); psxRcntUpd(3);
+#ifdef REVIVAL_PEOPS_AUDIO
+	if (cnts >= 5) psxRcntUpd(4);
+#endif
 	psxRcntSet();
 }
 
@@ -173,7 +176,12 @@ void psxRcntUpdate() {
 	if (cnts >= 5) {
 		if ((psxRegs.cycle - psxCounters[4].sCycle) >= psxCounters[4].Cycle) {
 			SPU_async((psxRegs.cycle - psxCounters[4].sCycle) * BIAS);
+#ifdef REVIVAL_PEOPS_AUDIO
+			/* Audio scheduling is not itself a guest hardware interrupt. */
+			psxRcntUpd(4);
+#else
 			psxRcntReset(4);
+#endif
 		}
 	}
 

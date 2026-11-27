@@ -104,7 +104,8 @@
 //#include "record.h"
 #include "resource.h"
 #include "audio_backend.h"
-#include "regs.h"
+#include "audio_clock.h"
+static struct revival_audio_clock audio_clock;
  
 ////////////////////////////////////////////////////////////////////////
 // SPU_d_ version infos/name
@@ -922,6 +923,12 @@ DWORD WINAPI MAINThreadEx(LPVOID lpParameter)
 
 void CALLBACK SPU_d_async(unsigned long cycle)
 {
+ unsigned int blocks;
+ unsigned long long started;
+ if(!bSpuInit || !bSPUIsOpen) return;
+ blocks=revival_audio_clock_add(&audio_clock,(uint32_t)cycle);
+ if(!blocks) return;
+ started=revival_audio_begin_mix();
 
  if(iSpuAsyncWait)
   {
@@ -950,9 +957,10 @@ void CALLBACK SPU_d_async(unsigned long cycle)
 #ifdef _WINDOWS
    MAINProc(0,0,0,0,0);                                // -> experimental win mode... not really tested... don't like the drawbacks
 #else
-   MAINThread(0);                                      // -> linux high-compat mode
+   while(blocks--) MAINThread(0);                       // bounded elapsed-cycle budget
 #endif
   }
+ revival_audio_end_mix(started);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -983,7 +991,8 @@ void CALLBACK SPU_d_playADPCMchannel(xa_decode_t *xap)
 {
  if(!iUseXA)    return;                                // no XA? bye
  if(!xap)       return;
- if(!xap->freq) return;                                // no xa freq ? bye
+ if(xap->freq!=18900 && xap->freq!=37800) return;
+ if(xap->nsamples<=0 || xap->nsamples>16384/(xap->stereo?2:1)) return;                                // no xa freq ? bye
 
  FeedXA(xap);                                          // call main XA feeder
 }
@@ -1191,6 +1200,7 @@ long SPU_d_open(void)
  spuCtrl=spuStat=0;
  memset(spuMem,0,sizeof(spuMem)); memset(regArea,0,sizeof(regArea));
  iCycle=0; lastch=-1; lastns=0; dwNewChannel=0; iSpuAsyncWait=0; XARepeat=0;
+ memset(&audio_clock,0,sizeof(audio_clock));
  if(!SetupStreams()) return PSE_SPU_ERR_INIT;
  if(!SetupSound()) { RemoveStreams(); return PSE_SPU_ERR_INIT; }
 

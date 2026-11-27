@@ -10,5 +10,7 @@ test:
 	./timer_policy_test
 	$(CC) $(CFLAGS) -I. tests/pcm_queue_test.c -o pcm_queue_test
 	./pcm_queue_test
+	$(CC) $(CFLAGS) -I. tests/audio_clock_test.c -o audio_clock_test
+	./audio_clock_test
 clean:
-	rm -f storage_test present_test timer_policy_test pcm_queue_test
+	rm -f storage_test present_test timer_policy_test pcm_queue_test audio_clock_test

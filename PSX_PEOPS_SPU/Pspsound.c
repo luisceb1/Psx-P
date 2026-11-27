@@ -31,10 +31,13 @@
 #include "audio_backend.h"
 #include "pcm_queue.h"
 #include "log.h"
+#include <pspkernel.h>
 
 static struct revival_pcm_queue queue;
 static int opened;
 static unsigned int produced, consumed, silent, dropped, nonzero;
+static uint64_t mix_us;
+static unsigned int mix_calls;
 static void audio_callback(void *userdata, Uint8 *stream, int len) {
     unsigned int got;
     (void)userdata;
@@ -47,7 +50,7 @@ int SetupSound(void) {
     SDL_AudioSpec want, got;
     if(opened) return 1;
     memset(&queue,0,sizeof(queue)); memset(&want,0,sizeof(want));
-    produced=consumed=silent=dropped=nonzero=0;
+    produced=consumed=silent=dropped=nonzero=mix_calls=0; mix_us=0;
     if(SDL_InitSubSystem(SDL_INIT_AUDIO)<0) { DLog("SPU SDL init: %s", SDL_GetError()); return 0; }
     want.freq=44100; want.format=AUDIO_S16LSB; want.channels=2; want.samples=512;
     want.callback=audio_callback;
@@ -86,5 +89,8 @@ void revival_audio_snapshot(FILE *f) {
     if(opened) SDL_LockAudio();
     a=produced;b=consumed;c=silent;d=dropped;e=nonzero;
     if(opened) SDL_UnlockAudio();
-    fprintf(f,",%u,%u,%u,%u,%u",a,b,c,d,e);
+    fprintf(f,",%u,%u,%u,%u,%u,%llu,%u",a,b,c,d,e,(unsigned long long)mix_us,mix_calls);
 }
+
+unsigned long long revival_audio_begin_mix(void) { return sceKernelGetSystemTimeWide(); }
+void revival_audio_end_mix(unsigned long long started) { mix_us += sceKernelGetSystemTimeWide()-started; ++mix_calls; }
