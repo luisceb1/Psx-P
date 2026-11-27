@@ -301,8 +301,37 @@ int main(){
     disc_boot_test();
     SPUclose();SPUshutdown();
 #endif
+#ifdef REVIVAL_SPU_INTEGRATION
+    // Record native boot mode before changing it. The upstream HLE uses
+    // GP1(08)=0x27 (640-wide/interlaced), outside the current PSP vout.
+    extern unsigned probe_unsupported,probe_blanks;
+    if(report){
+        fprintf(report,"GU boot mode,%08lx,%d,%d,%d,%d,rgb24=%d,interlace=%d,blank=%d\n",
+            (unsigned long)gpu.status.reg,(int)gpu.screen.x,(int)gpu.screen.y,
+            (int)gpu.screen.w,(int)gpu.screen.h,(int)gpu.status.rgb24,
+            (int)gpu.status.interlace,(int)gpu.status.blanking);
+        fprintf(report,"GU boot counters,%u,%u,%u\n",probe_presentations,probe_unsupported,probe_blanks);
+        fflush(report);
+    }
+    unsigned before=probe_presentations;
+    // Explicit 256x240 NTSC progressive 15-bit window over guest red fill.
+    GPU_writeStatus(0x08000000);
+    GPU_writeStatus(0x05000000);
+    GPU_writeStatus(0x06c60260);
+    GPU_writeStatus(0x07042018);
+    GPU_writeStatus(0x03000000);
+    GPU_requestScreenRedraw();GPU_updateLace();
+    if(report){
+        fprintf(report,"GU test mode,%08lx,%d,%d,%d,%d\n",(unsigned long)gpu.status.reg,
+            (int)gpu.screen.x,(int)gpu.screen.y,(int)gpu.screen.w,(int)gpu.screen.h);
+        fprintf(report,"GU test counters,%u,%u,%u\n",probe_presentations,probe_unsupported,probe_blanks);
+        fflush(report);
+    }
+    mark("GU submission",probe_presentations>before);
+#else
     GPU_writeStatus(0x03000000);GPU_requestScreenRedraw();GPU_updateLace();
     mark("GU submission",probe_presentations>0);
+#endif
     if(report)fclose(report);
     sceKernelDelayThread(10000000);GPU_shutdown();sceKernelExitGame();return 0;
 }
