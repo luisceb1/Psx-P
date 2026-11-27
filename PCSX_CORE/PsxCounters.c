@@ -20,11 +20,18 @@
 
 #include "PsxCommon.h"
 #include "perf.h"
+#include "boottrace.h"
+#include "timer_policy.h"
+static unsigned char timer_fired[3];
 
 static int cnts = 4;
 
 static void psxRcntUpd(unsigned long index) {
 	psxCounters[index].sCycle = psxRegs.cycle;
+	if (revival_timer_fix && index < 3) {
+		psxCounters[index].Cycle = revival_timer_delay(psxCounters[index].count, psxCounters[index].target, psxCounters[index].rate, BIAS, psxCounters[index].mode);
+		return;
+	}
 //	if (((!(psxCounters[index].mode & 1)) || (index!=2)) &&
 //		psxCounters[index].mode & 0x30) {
 	//	if (psxCounters[index].mode & 0x10) { // Interrupt on target
@@ -40,6 +47,17 @@ static void psxRcntReset(unsigned long index) {
 //	SysPrintf("psxRcntReset %x (mode=%x)\n", index, psxCounters[index].mode);
 	psxCounters[index].count = 0;
 	psxRcntUpd(index);
+	if (index < 3) ++revival_timer_events[index];
+	if (revival_timer_fix && index < 3) {
+		if (revival_timer_irq(psxCounters[index].mode, timer_fired[index])) {
+			timer_fired[index] = 1;
+			++revival_timer_irqs[index];
+			psxHu32ref(0x1070) |= SWAPu32(psxCounters[index].interrupt);
+			psxRegs.interrupt |= 0x80000000;
+		}
+		return;
+	}
+	if (index < 3) ++revival_timer_irqs[index];
 
 //	if (index == 2) SysPrintf("rcnt2 %x\n", psxCounters[index].mode);
 	psxHu32ref(0x1070)|= SWAPu32(psxCounters[index].interrupt);
@@ -75,6 +93,7 @@ static void psxRcntSet() {
 void psxRcntInit() {
 
 	memset(psxCounters, 0, sizeof(psxCounters));
+	memset(timer_fired, 0, sizeof(timer_fired));
 
 	psxCounters[0].rate = 1; psxCounters[0].interrupt = 0x10;
 	psxCounters[1].rate = 1; psxCounters[1].interrupt = 0x20;
@@ -167,6 +186,7 @@ void psxRcntWcount(unsigned long index, unsigned long value) {
 void psxRcntWmode(unsigned long index, unsigned long value)  {
 //	SysPrintf("writeCmode[%ld] = %lx\n", index, value);
 	psxCounters[index].mode = value;
+	if (index < 3) timer_fired[index] = 0;
 	psxCounters[index].count = 0;
 	if(index == 0) {
 		switch (value & 0x300) {
@@ -196,6 +216,7 @@ void psxRcntWmode(unsigned long index, unsigned long value)  {
 		}
 	}
 
+	if (revival_timer_fix && index < 3 && !psxCounters[index].rate) psxCounters[index].rate = 1;
 	// Need to set a rate and target
 	psxRcntUpd(index);
 	psxRcntSet();

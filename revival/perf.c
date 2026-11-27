@@ -11,6 +11,8 @@ int revival_perf_mode = REVIVAL_PERF_LEGACY;
 int revival_perf_native;
 int revival_perf_direct;
 int revival_cd_ack_fix;
+int revival_timer_fix;
+unsigned int revival_timer_events[3], revival_timer_irqs[3], revival_hw_exceptions;
 struct revival_cd_trace revival_cd_trace;
 static uint64_t stages[4];
 static unsigned int native_hits;
@@ -31,15 +33,16 @@ void revival_perf_init(void) {
     if (fscanf(f, "%23s", mode) == 1) {
         if (!strcmp(mode, "single")) revival_perf_mode = REVIVAL_PERF_SINGLE;
         else if (!strcmp(mode, "uncapped")) revival_perf_mode = REVIVAL_PERF_UNCAPPED;
-        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix")) {
+        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix")) {
             revival_perf_mode = REVIVAL_PERF_SINGLE;
             revival_perf_direct = 1;
             if (!strcmp(mode, "half")) { sample_divisor = 2; selected_mode = "half"; }
             else if (!strcmp(mode, "ceiling")) { sample_divisor = 0; selected_mode = "ceiling"; }
-            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix")) {
+            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix")) {
                 sample_divisor = 2;
-                revival_cd_ack_fix = !strcmp(mode, "bootfix");
-                selected_mode = revival_cd_ack_fix ? "bootfix" : "boottrace";
+                revival_timer_fix = !strcmp(mode, "irqfix");
+                revival_cd_ack_fix = revival_timer_fix || !strcmp(mode, "bootfix");
+                selected_mode = revival_timer_fix ? "irqfix" : revival_cd_ack_fix ? "bootfix" : "boottrace";
             }
         }
         else if (!strcmp(mode, "native")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_native = 1; }

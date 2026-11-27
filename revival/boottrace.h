@@ -9,6 +9,8 @@ struct revival_cd_trace {
 };
 extern struct revival_cd_trace revival_cd_trace;
 extern int revival_cd_ack_fix;
+extern int revival_timer_fix;
+extern unsigned int revival_timer_events[3], revival_timer_irqs[3], revival_hw_exceptions;
 void revival_boot_header(FILE *f);
 void revival_boot_snapshot(FILE *f);
 #endif
