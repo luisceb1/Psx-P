@@ -38,4 +38,16 @@ s = s[:start] + """static inline void clear_insn_cache(void *start, void *end, i
 replace_once("#define RECMEM_SIZE         (12 * 1024 * 1024)",
              "#define RECMEM_SIZE         (4 * 1024 * 1024)")
 p.write_text(s)
+# Upstream signed constant division uses unsigned values (including abs).
+# Avoid the entire unverified shortcut, not just the GCC overload error.
+# Signed constant multiplication also needs INT_MIN / negative tests.
+mdu = root / "src/recompiler/mips/rec_mdu.cpp.h"
+m = mdu.read_text()
+for macro in ("USE_CONST_DIV_OPTIMIZATIONS", "USE_CONST_MULT_OPTIMIZATIONS",
+              "OMIT_DIV_BY_ZERO_FIXUP_IF_EXCEPTION_SEQUENCE_FOUND"):
+    token = "#define " + macro + "\n"
+    if m.count(token) != 1:
+        raise SystemExit("Unexpected MDU source: " + macro)
+    m = m.replace(token, "/* PSP probe disables " + macro + " */\n", 1)
+mdu.write_text(m)
 print("Pinned source prepared; compile-only, not a runnable emulator")

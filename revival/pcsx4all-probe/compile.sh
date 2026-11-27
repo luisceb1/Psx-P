@@ -34,5 +34,12 @@ if [ "$failed" -eq 0 ]; then
     psp-size "$out/core-relocatable.o"
     echo "=== Remaining external symbols ==="
     psp-nm -u -C "$out/core-relocatable.o"
+    echo "=== Defined CPU backend symbols ==="
+    psp-nm -C "$out/core-relocatable.o" | grep -E ' (psxInt|psxRec|psxCpu|psxBranchTest\(\))
+fi
+exit "$failed"
+
+    echo "=== Host ABI / ISA attributes ==="
+    psp-readelf -h -A "$out/core-relocatable.o"
 fi
 exit "$failed"
