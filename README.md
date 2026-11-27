@@ -2,7 +2,7 @@
 
 Experimental modernization of PSX-P Alpha 2, the PlayStation emulator for Sony PSP originally developed by Yoshihiro and based on PCSX. Initial target: PSP Go on firmware 6.61 with ARK-5. Independent of Sony and ARK-5.
 
-**Status: v0.0.2 exit test.** CI successfully builds EBOOT.PBP with modern PSPSDK and pinned source-built SDL 1.2.15; PSP Go menu boot and Square/HOME exit verified by user; game execution, system Pause Game and public binary release not validated. The storage helper is integrated in the frontend startup.
+**Status: v0.0.8 hardware milestone.** CI successfully builds EBOOT.PBP with modern PSPSDK and pinned source-built SDL 1.2.15. PSP Go menu boot and Square/HOME exit verified by user. Resident Evil USA (SLUS00170) reaches gameplay with experimental `irqfix` mode, according to user report; substantial slowdown and a VSync timeout remain. Other games, sound, system Pause Game, save integrity and public binary release not validated. The storage helper is integrated in the frontend startup.
 
 Upstream: https://github.com/PSP-Archive/Psx-P. Baseline: `6f7f300223294859215c42b618fe853d0f847222`. Preserve its history and all existing notices. The original PCSX-derived code contains GPL-2.0-or-later notices. Audit per-file notices, bundled SDL binaries, icons and audio before publishing new binaries. New C files are GPL-2.0-or-later. Do not distribute BIOS, commercial games or assets without permission.
 

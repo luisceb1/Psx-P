@@ -66,7 +66,8 @@ SDL_PREFIX ?= ./SDL_PSP_LIB_BUILD
 SDL_MIXER ?= 0
 INCDIR += $(SDL_PREFIX)/include/SDL
 ## Legacy C dialect and tentative global definitions in PCSX headers.
-CFLAGS = -std=gnu99 -fgnu89-inline -fcommon -Os  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
+REVIVAL_OPT ?= -Os
+CFLAGS = -std=gnu99 -fgnu89-inline -fcommon $(REVIVAL_OPT) -DREVIVAL_OPT_LABEL=\\\"$(REVIVAL_OPT)\\\"  -fsingle-precision-constant -funswitch-loops  -fbranch-target-load-optimize2 -D__PSP__ -D_SDL 
 #-D_SDL2  
 
 #-D_OPENGL
@@ -87,7 +88,7 @@ LIBS = $(SDL_MIXER_LIB) $(SDL_PREFIX)/lib/libSDL.a -lpng -lz -lm -lpspaudiolib -
 
 
 EXTRA_TARGETS = EBOOT.PBP
-PSP_EBOOT_TITLE = PSX-P Revival 0.0.8 perf test
+PSP_EBOOT_TITLE = PSX-P Revival 0.0.9 perf test
 
 PSPSDK=$(shell psp-config --pspsdk-path)
 include $(PSPSDK)/lib/build.mak

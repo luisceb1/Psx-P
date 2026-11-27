@@ -12,6 +12,10 @@ int revival_perf_native;
 int revival_perf_direct;
 int revival_cd_ack_fix;
 int revival_timer_fix;
+int revival_fastcore;
+#ifndef REVIVAL_OPT_LABEL
+#define REVIVAL_OPT_LABEL "unknown"
+#endif
 unsigned int revival_timer_events[3], revival_timer_irqs[3], revival_hw_exceptions;
 struct revival_cd_trace revival_cd_trace;
 static uint64_t stages[4];
@@ -33,16 +37,17 @@ void revival_perf_init(void) {
     if (fscanf(f, "%23s", mode) == 1) {
         if (!strcmp(mode, "single")) revival_perf_mode = REVIVAL_PERF_SINGLE;
         else if (!strcmp(mode, "uncapped")) revival_perf_mode = REVIVAL_PERF_UNCAPPED;
-        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix")) {
+        else if (!strcmp(mode, "direct") || !strcmp(mode, "half") || !strcmp(mode, "ceiling") || !strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore")) {
             revival_perf_mode = REVIVAL_PERF_SINGLE;
             revival_perf_direct = 1;
             if (!strcmp(mode, "half")) { sample_divisor = 2; selected_mode = "half"; }
             else if (!strcmp(mode, "ceiling")) { sample_divisor = 0; selected_mode = "ceiling"; }
-            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix")) {
+            else if (!strcmp(mode, "boottrace") || !strcmp(mode, "bootfix") || !strcmp(mode, "irqfix") || !strcmp(mode, "fastcore")) {
                 sample_divisor = 2;
-                revival_timer_fix = !strcmp(mode, "irqfix");
+                revival_fastcore = !strcmp(mode, "fastcore");
+                revival_timer_fix = revival_fastcore || !strcmp(mode, "irqfix");
                 revival_cd_ack_fix = revival_timer_fix || !strcmp(mode, "bootfix");
-                selected_mode = revival_timer_fix ? "irqfix" : revival_cd_ack_fix ? "bootfix" : "boottrace";
+                selected_mode = revival_fastcore ? "fastcore" : revival_timer_fix ? "irqfix" : revival_cd_ack_fix ? "bootfix" : "boottrace";
             }
         }
         else if (!strcmp(mode, "native")) { revival_perf_mode = REVIVAL_PERF_SINGLE; revival_perf_native = 1; }
@@ -53,7 +58,7 @@ void revival_perf_init(void) {
 void revival_perf_begin(void) {
     FILE *f = fopen("PERF.CSV", "wb");
     if (!f) return;
-    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls");
+    fprintf(f, "mode,cpu_mhz,bus_mhz,wall_us,laces,counter_vblanks,legacy_cycle_delta,cap_us,swap_us,convert_us,scale_us,sdl_blit_us,flip_us,native_hits,present_requests,present_skipped,gpu_bulk_us,gpu_bulk_calls,cd_us,cd_calls,log_us,log_calls,compiler_opt");
     revival_boot_header(f);
     fclose(f);
     samples = laces = vblanks = last_cycle = draw_phase = 0;
@@ -109,6 +114,7 @@ void revival_perf_lace(unsigned int cycle) {
             (unsigned long long)component_us[0], component_calls[0],
             (unsigned long long)component_us[1], component_calls[1],
             (unsigned long long)component_us[2], component_calls[2]);
+    fprintf(f, ",%s", REVIVAL_OPT_LABEL);
     revival_boot_snapshot(f);
     fclose(f);
     last_cycle = cycle;
