@@ -31,32 +31,19 @@ void (*biosB0[256])(void)={trap};
 void (*biosC0[256])(void)={trap};
 void (*psxHLEt[256])(void)={trap};
 V0(psxBiosInit) V0(psxBiosShutdown) V0(psxBiosException)
+#ifndef REVIVAL_GPU_INTEGRATION
 V0(psxHwReset)
 u8 psxHwRead8(u32) { STOP; }
 u16 psxHwRead16(u32) { STOP; }
-#ifdef REVIVAL_GPU_INTEGRATION
-u32 psxHwRead32(u32 addr) {
-    switch(addr & 0x1fffffffu) {
-    case 0x1f801810: return GPU_readData();
-    case 0x1f801814: return GPU_readStatus();
-    default: STOP;
-    }
-}
-#else
 u32 psxHwRead32(u32) { STOP; }
-#endif
 void psxHwWrite8(u32,u8) { STOP; }
 void psxHwWrite16(u32,u16) { STOP; }
-#ifdef REVIVAL_GPU_INTEGRATION
-void psxHwWrite32(u32 addr,u32 value) {
-    switch(addr & 0x1fffffffu) {
-    case 0x1f801810: GPU_writeData(value); return;
-    case 0x1f801814: GPU_writeStatus(value); return;
-    default: STOP;
-    }
-}
-#else
 void psxHwWrite32(u32,u32) { STOP; }
+#else
+V0(mdecInit) V0(sioInit) V0(cdrReset)
+void psxDma0(u32,u32,u32){STOP;}
+void psxDma1(u32,u32,u32){STOP;}
+void psxDma3(u32,u32,u32){STOP;}
 #endif
 V0(cdrInterrupt) V0(cdrReadInterrupt) V0(cdrLidSeekInterrupt)
 V0(cdrPlayInterrupt) V0(cdrDmaInterrupt)

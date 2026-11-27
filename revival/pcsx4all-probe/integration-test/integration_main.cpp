@@ -52,15 +52,17 @@ static bool pixels(){
         gpu.vram[256]==0 && gpu.vram[240*1024]==0;
 }
 static void dma_test(){
-    // Known, bounded RAM packet; no guest DMA register decoder yet.
+    // Known, bounded RAM packet through original MMIO register decoder.
     setup(&psxRec);
     psxEvqueueInit();
     const u32 addr=0x20000;
     const u32 packet[]={0x0200ff00,0x00000000,0x00020100,0x00000000};
     memcpy(psxM+addr,packet,sizeof(packet));
-    HW_DMA2_MADR=addr;HW_DMA2_BCR=0x00010004;HW_DMA2_CHCR=0x01000201;
-    HW_DMA_ICR=(1u<<18)|(1u<<23);
-    psxDma2(addr,0x00010004,0x01000201);
+    psxMemWrite32(0x1f8010f0,1u<<11); // DPCR enable DMA2
+    psxMemWrite32(0x1f8010f4,(1u<<18)|(1u<<23));
+    psxMemWrite32(0x1f8010a0,addr);
+    psxMemWrite32(0x1f8010a4,0x00010004);
+    psxMemWrite32(0x1f8010a8,0x01000201);
     GPU_updateLace();
     mark("DMA2 RAM to VRAM",gpu.vram[0]==0x03e0 && gpu.vram[1024+255]==0x03e0 && gpu.vram[2*1024]==0 && HW_DMA2_MADR==addr+16);
     bool queued=(psxRegs.interrupt & (1u<<PSXINT_GPUDMA))!=0;

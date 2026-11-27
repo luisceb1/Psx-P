@@ -32,6 +32,7 @@ cp "$core" "$combined/core-relocatable.o"
 cp "$out/gpu_core.o" "$out/gpu_unai.o" "$combined/"
 out=$combined
 compile src/psxdma.cpp dma_core
+compile src/psxhw.cpp hw_core
 # Compile the original stubs and vout with integration-specific definitions.
 for pair in "guest-test/platform_stubs.cpp:integration_stubs" "gpu-test/gpu_platform.cpp:integration_vout" "integration-test/integration_main.cpp:integration_main"; do
     unit=${pair%:*}
