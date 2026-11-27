@@ -16,19 +16,26 @@ static inline unsigned rv_audio_push(rv_audio_queue *q,const void *data,unsigned
     const unsigned char *bytes=(const unsigned char *)data;
     unsigned n=frames,room=RV_AUDIO_CAPACITY-q->count;
     if(n>room)n=room;
-    for(unsigned i=0;i<n;i++){
-        unsigned j=(q->read+q->count+i)%RV_AUDIO_CAPACITY;
-        memcpy(&q->pcm[2*j],bytes+4*i,4);
-        if(q->pcm[2*j]||q->pcm[2*j+1])q->nonzero++;
+    if(n){
+        unsigned start=(q->read+q->count)%RV_AUDIO_CAPACITY;
+        unsigned first=RV_AUDIO_CAPACITY-start;
+        if(first>n)first=n;
+        memcpy(q->pcm+2*start,bytes,first*4u);
+        if(n>first)memcpy(q->pcm,bytes+first*4u,(n-first)*4u);
+        for(unsigned i=0;i<first;i++)
+            if(q->pcm[2*(start+i)]||q->pcm[2*(start+i)+1])q->nonzero++;
+        for(unsigned i=0;i<n-first;i++)
+            if(q->pcm[2*i]||q->pcm[2*i+1])q->nonzero++;
     }
     q->count+=n;q->accepted+=n;q->dropped+=frames-n;return n;
 }
 static inline int rv_audio_peek(const rv_audio_queue *q,int16_t out[RV_AUDIO_BLOCK*2]){
     if(q->count<RV_AUDIO_BLOCK)return 0;
-    for(unsigned i=0;i<RV_AUDIO_BLOCK;i++){
-        unsigned j=(q->read+i)%RV_AUDIO_CAPACITY;
-        out[2*i]=q->pcm[2*j];out[2*i+1]=q->pcm[2*j+1];
-    }
+    unsigned first=RV_AUDIO_CAPACITY-q->read;
+    if(first>RV_AUDIO_BLOCK)first=RV_AUDIO_BLOCK;
+    memcpy(out,q->pcm+2*q->read,first*4u);
+    if(first<RV_AUDIO_BLOCK)
+        memcpy(out+2*first,q->pcm,(RV_AUDIO_BLOCK-first)*4u);
     return 1;
 }
 static inline void rv_audio_consume(rv_audio_queue *q){
