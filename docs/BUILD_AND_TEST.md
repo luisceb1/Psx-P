@@ -30,3 +30,7 @@ Both files must show w/lf before compiling. From the repository directory in Pow
 ```powershell
 docker run --rm -v "${PWD}:/src" -w /src pspdev/pspdev:latest sh -c 'set -e; apk add --no-cache autoconf automake libtool build-base; sh revival/build-source-sdl.sh; make -f makefile clean; make -f makefile SDL_PREFIX=/tmp/psxprv-sdl SDL_MIXER=0; test -s EBOOT.PBP; sha256sum EBOOT.PBP'
 ```
+
+## HOME exit regression (0.0.2 candidate)
+
+User observed the 0.0.1 main menu on a real PSP Go, but HOME -> Exit and Pause froze. The original callback set a flag not consumed by the main menu. Candidate uses sceKernelExitGame from the registered callback thread, without cross-thread plugin or stdio cleanup. Test with no disc, BIOS or valuable saves: first Square exit, then relaunch and HOME -> Exit. Repeat three times. Do not select system Pause Game until ordinary exit is verified; PSP Go suspension and snapshot support are not validated. HOME exit is immediate; do not use during memory card writes. This change is not a hardware-verified fix.

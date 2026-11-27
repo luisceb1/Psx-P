@@ -70,13 +70,12 @@ void newCD(const char *filename);
 void InitConfig(void);
 void DoMainGui(void);
 
-int done = 0;
-
-
 /* Exit callback */
 int exit_callback(int arg1, int arg2, void *common)
 {
-	done = 1;
+	/* HOME exit must terminate even when the main thread is in emulation.
+	 * Do not call plugin cleanup or stdio from this callback thread. */
+	sceKernelExitGame();
 	return 0;
 }
 
@@ -86,8 +85,12 @@ int CallbackThread(SceSize args, void *argp)
 	int cbid;
 
 	cbid = sceKernelCreateCallback("Exit Callback", exit_callback, NULL);
-	sceKernelRegisterExitCallback(cbid);
-	sceKernelSleepThreadCB();
+	if (cbid < 0) return cbid;
+	{
+		int rc = sceKernelRegisterExitCallback(cbid);
+		if (rc < 0) { sceKernelDeleteCallback(cbid); return rc; }
+	}
+	for (;;) sceKernelSleepThreadCB();
 
 	return 0;
 }
@@ -98,10 +101,11 @@ int SetupCallbacks(void)
 	int thid = 0;
 
 	thid = sceKernelCreateThread("update_thread", CallbackThread,
-				     0x11, 0xFA0, 0, 0);
+				     0x11, 0x1000, PSP_THREAD_ATTR_USER, 0);
 	if(thid >= 0)
 	{
-		sceKernelStartThread(thid, 0, 0);
+		int rc = sceKernelStartThread(thid, 0, 0);
+		if (rc < 0) { sceKernelDeleteThread(thid); return rc; }
 	}
 
 	return thid;
@@ -272,7 +276,7 @@ int main(int argc, char* argv[])
 	pspDebugScreenInit();
 
 	SetLogPath(app_path);
-	DLog("PSX-P Revival 0.0.1 diagnostic; app=%s", app_path);
+	DLog("PSX-P Revival 0.0.2 exit test; app=%s", app_path);
 	{
 		const char *dirs[] = {"ISO", "BIOS", "MC", "SaveStates"};
 		struct stat st;
@@ -288,7 +292,12 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	SetupCallbacks();
+	if (SetupCallbacks() < 0) {
+		DLog("Cannot start HOME exit callback thread");
+		pspDebugScreenPrintf("Cannot start exit callback; returning to XMB.\n");
+		sceKernelDelayThread(2000000);
+		return 1;
+	}
 	
 	LoadConfig();
 
