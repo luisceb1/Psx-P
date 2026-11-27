@@ -88,3 +88,33 @@ CI 45994629580: all six previous EBOOT hashes unchanged, legacy and ISA pass. HL
 CI 45995581196: HLE/MDEC/SIO candidate successfully linked, EBOOT SHA256 9f18130eb0cb9342e88f22308711f45381dd7e17db7adbd3844634a60ac37f65; previous six hashes unchanged. SPU compile fails in SetupStreams due to uint32_t allocation casts versus unsigned int ring pointers. Preserve original ring element type and size XA allocation by dereferenced element type; no timing or mixer algorithm changes. Runtime validation pending, no audio output yet.
 
 CI 45996223350 passes six SPU C units and relocatable link; seven EBOOT hashes unchanged. nm shows POSIX worker dependencies because upstream defines THREAD_ENABLED automatically; disable that define only on PSP, preserve XA gettimeofday, gate absence of pthread/semaphore symbols. Add separate full diagnostic EBOOT with real SPU, null output backend, IRQ callback and scheduler matching upstream logic, MMIO control readback and update-return smoke test. Not an audible audio test or DMA4 transfer test. Pending CI and physical validation. No public binary.
+
+## Full-core physical smoke test — 2026-11-27
+
+User-reported PSP Go execution of candidate 9c3bfd22fcdcde504974941d58d62808d2b2b580 (CI 45996677917, full-test EBOOT reference SHA256 789f0fd6da3b3743316a58496366b62844671767172d2a2faa2ae7e613a7ba83). Local binary hash not independently confirmed for this run. User observed a red rectangle. Uploaded PCSX4ALL_INTEGRATION.TXT contains 20 PASS, zero FAIL, CD status 02:
+
+```text
+CPU init,PASS
+SPU init null backend,PASS
+GPU init,PASS
+Interpreter GP0,PASS
+Dynarec GP0,PASS
+GPR and cycles,PASS
+DMA2 RAM to VRAM,PASS
+DMA2 event queued,PASS
+DMA2 completion IRQ,PASS
+CD Getstat event queued,PASS
+CD Getstat response,PASS
+CD status,02
+PS-X EXE creation,PASS
+PS-X EXE load,PASS
+PS-X EXE execution,PASS
+HLE reset,PASS
+HLE vectors,PASS
+HLE A0 strlen,PASS
+SPU MMIO control,PASS
+SPU update returned,PASS
+GU submission,PASS
+```
+
+This validates bounded synthetic integration paths, not game compatibility, frame rate, audible sound, DMA3/DMA4 data transfer, independent BIN/CUE reader, ISO9660 bootstrap, MDEC decoding, pad input or memory card persistence. Red rectangle observation supports visible output, not precise pixel geometry or final frame identity. Next gate: synthetic disc boot and bounded continuous execution, then privately supplied game media after loader safety review. No public binary; retain interpreter and stable main.
